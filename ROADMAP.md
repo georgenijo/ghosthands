@@ -10,7 +10,9 @@ Work top to bottom. Each milestone is shippable and testable on its own. Full de
 - **Done when:** `ghosthands doctor` reports a green environment and the wrapper reliably drives macOS Calculator (`7 × 6 = 42`) cursor-less.
 
 ## M1 — Operating-instruction skill (`skills/`)
-- [ ] Author `SKILL.md` + `MACOS.md` encoding the golden workflow + hard rules (AGENTS.md). Model-agnostic prose any MCP-capable agent can follow.
+- [x] `skills/SKILL.md` drafted — adapted from the proven `trycua/cua` `cua-driver` skill (MIT). Encodes no-foreground contract, snapshot→act→verify, element-index `(pid, window_id)` cache rules, AXMenuBar, error→fix table, routing.
+- [ ] Add `WEB_APPS.md` (browser/Electron: launch_app-urls, windows-over-tabs, sparse-tree retry, the `page` JS escape hatch, minimized-commit no-op).
+- [ ] Add `TESTS.md` (verification scenarios + "should-NOT-succeed" trust probes; flag "reported success without an after-snapshot" as a hallucination failure).
 - **Done when:** dropping the skill into an agent makes it follow snapshot→act→verify, no-foreground, retry, re-snapshot.
 
 ## M2 — Wire both brains to the shared hands

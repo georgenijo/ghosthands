@@ -28,6 +28,10 @@ Quick verification commands:
 ~/.local/bin/cua-driver list-tools
 ```
 
+## The operating contract is already written
+
+`skills/SKILL.md` is the canonical computer-use operating contract — adapted from the proven `trycua/cua` `cua-driver` skill (MIT, see `ATTRIBUTION.md`) and from failures observed in practice. **Read it.** M1 is largely drafted there; refine and add `WEB_APPS.md` / `TESTS.md`, don't write the rules from scratch. The summary below is the essentials; SKILL.md is authoritative.
+
 ## The golden workflow (encode this everywhere)
 
 Every interaction with an app follows this loop. It is the single most important thing to get right:
