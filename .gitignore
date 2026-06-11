@@ -1,0 +1,28 @@
+# Secrets / local config
+.env
+.env.*
+config.local.toml
+*.key
+
+# Benchmark + run artifacts
+bench/results/
+*.png
+*.jsonl
+*.log
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.uv/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

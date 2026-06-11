@@ -1,0 +1,23 @@
+# GhostHands example config — copy to config.local.toml and edit.
+
+[brain]
+# Order GhostHands tries brains when --brain auto. Subscription brains first (free),
+# API brains last (pay-per-call). Remove a line to disable that brain.
+priority = ["claude-code", "codex-cli", "anthropic-api", "openai-api"]
+
+[hands]
+# Path to the Cua Driver binary (the "hands"). Pin the tested version.
+driver_path = "~/.local/bin/cua-driver"
+pinned_version = "0.5.x"          # update once verified
+autostart_daemon = true           # keep a persistent daemon for stability
+
+[behavior]
+prefer_ax_over_pixels = true      # use Accessibility element_index; pixels only as fallback
+resnapshot_before_action = true   # cache expires fast — re-read window state each action
+action_retries = 2                # retry on EAGAIN / dropped daemon connection
+cursorless = true                 # omit session cursor until Screen Recording is granted
+no_foreground = true              # never steal focus; nav URLs via launch_app
+
+[benchmark]
+runs_per_task = 5                 # N>=5, report median
+contenders = ["claude-code", "codex-cli"]   # add "dom-baseline" to compare vs browser-only
