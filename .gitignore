@@ -26,3 +26,5 @@ venv/
 .DS_Store
 .idea/
 .vscode/
+src/ghosthands.egg-info/
+bench/results/latest.json
