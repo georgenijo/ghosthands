@@ -45,16 +45,20 @@ cua-driver permissions grant
 python -m venv .venv && .venv/bin/pip install mlx-lm mlx-vlm
 .venv/bin/hf download mlx-community/Qwen3-4B-Instruct-2507-4bit
 
+# Install the CLI on your PATH (editable, with the local brain baked in):
+uv tool install --editable '.[local]'
+
 # Drive a native app with the free local brain, $0:
-.venv/bin/python bin/ghosthands run "Compute 7 times 6" \
-    --brain local --app com.apple.calculator
+ghosthands run "Compute 7 times 6" --brain local --app com.apple.calculator
 
 # Record a flow once, then replay forever with NO model:
-.venv/bin/python bin/ghosthands record myflow "<goal>" --app <bundle> --url <page>
-bin/ghosthands replay myflow            # deterministic · $0
+ghosthands record myflow "<goal>" --app <bundle> --url <page>
+ghosthands replay myflow                # deterministic · $0
 ```
 
-Other commands: `ghosthands doctor` (verify the environment), `ghosthands smoke` (Calculator 7×6=42), `ghosthands brains` (detect Claude/Codex), `ghosthands run --brain claude|gpt` (subscription agents), `ghosthands bench`.
+Other commands: `ghosthands doctor` (verify the environment), `ghosthands smoke` (Calculator 7×6=42), `ghosthands brains` (detect Claude/Codex), `ghosthands run --brain claude|gpt` (subscription agents), `ghosthands scene "<diagram>"` (Excalidraw scene JSON on the routed model), `ghosthands bench`. (`bin/ghosthands` still works zero-install from the repo.)
+
+**For AI agents:** operating instructions ship inside the CLI, always version-matched — `ghosthands skills` lists them, `ghosthands skills get core|web|canvas|tests` prints them. Drop a thin discovery skill into your harness (`~/.claude/skills/ghosthands/`, `~/.codex/skills/ghosthands/`) that tells the agent to run `ghosthands skills get core` first.
 
 ## The benchmark
 

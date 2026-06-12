@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ghosthands"
+version = "0.1.0"
+description = "Invisible hands any AI can borrow to drive your Mac — free, local, cursor-less (AX-first computer use)."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+# The CLI and AX path are stdlib-only by design (DESIGN.md §deps).
+dependencies = []
+
+[project.optional-dependencies]
+local = ["mlx-lm"]          # free local brain (Apple Silicon, Metal)
+vision = ["mlx-vlm"]        # pixel fallback for no-AX surfaces
+
+[project.scripts]
+ghosthands = "ghosthands.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/georgenijo/ghosthands"
+
+[tool.setuptools.packages.find]
+where = ["src"]

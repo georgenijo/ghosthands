@@ -70,6 +70,9 @@ def main(argv: list[str] | None = None) -> int:
     p_record.add_argument("--model", help="MLX model id for the local brain")
     p_record.add_argument("--max-turns", type=int, default=12)
 
+    p_skills = sub.add_parser("skills", help="agent operating instructions, version-matched to this install: ghosthands skills [get] [core|web|canvas|tests]")
+    p_skills.add_argument("name", nargs="*", help="skill name (omit to list); 'get <name>' also accepted")
+
     p_scene = sub.add_parser("scene", help='generate an Excalidraw scene on the routed model: ghosthands scene "<description>"')
     p_scene.add_argument("description")
     p_scene.add_argument("--raw", action="store_true", help="print the raw element array (localStorage recipe) instead of the clipboard payload")
@@ -124,6 +127,30 @@ def main(argv: list[str] | None = None) -> int:
         result = brains.run_goal(brain, args.goal, timeout=args.timeout, stream=print)
         print(f"\n[{brain.name}] exit={result.returncode} wall={result.seconds:.1f}s")
         return 0 if result.returncode == 0 else 1
+
+    if args.command == "skills":
+        skills_dir = Path(__file__).resolve().parent.parent.parent / "skills"
+        if not skills_dir.is_dir():
+            print("skills directory not found (non-editable install?) — "
+                  "see https://github.com/georgenijo/ghosthands/tree/main/skills",
+                  file=sys.stderr)
+            return 1
+        names = {"core": "SKILL.md", "web": "WEB_APPS.md",
+                 "canvas": "CANVAS.md", "tests": "TESTS.md"}
+        words = [w for w in args.name if w != "get"]
+        if not words:
+            print("skills (read with: ghosthands skills get <name>):")
+            for k, f in names.items():
+                first = (skills_dir / f).read_text().splitlines()[0].lstrip("# ")
+                print(f"  {k:<8} {f:<13} {first}")
+            return 0
+        f = names.get(words[0])
+        if f is None:
+            print(f"unknown skill {words[0]!r} (known: {', '.join(names)})",
+                  file=sys.stderr)
+            return 1
+        print((skills_dir / f).read_text())
+        return 0
 
     if args.command == "scene":
         from . import scene
