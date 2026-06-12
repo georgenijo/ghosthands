@@ -1,0 +1,23 @@
+{
+  "name": "ha-toggle",
+  "bundle_id": "com.brave.Browser",
+  "steps": [
+    {
+      "action": "click",
+      "target": {
+        "role": "AXStaticText",
+        "ax_id": null,
+        "title": null,
+        "label": null,
+        "text": "GhostHands Test"
+      },
+      "text": null,
+      "key": null,
+      "note": "the GhostHands Test toggle button"
+    }
+  ],
+  "urls": [
+    "http://localhost:8123/ghosthands-test"
+  ],
+  "title_contains": "GhostHands"
+}
