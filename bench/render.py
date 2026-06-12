@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""Render every per-device results file into one leaderboard: bench/RESULTS.md.
+
+Reads bench/results/<slug>.json (each = {device, records}) and emits a Markdown
+page grouped by machine, plus a cross-device comparison once more than one
+machine has reported. This is the "view" contributors see — run the benchmark
+on your Mac, then `python bench/render.py`, and your numbers show up here with
+no edits to anyone else's data.
+
+Usage: python bench/render.py
+"""
+
+from __future__ import annotations
+
+import json
+import statistics
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+RESULTS_DIR = REPO / "bench" / "results"
+OUT = REPO / "bench" / "RESULTS.md"
+SKIP = {"latest.json"}  # per-run scratch, not a device file
+
+# friendly path description per contender (brain + hands)
+CONTENDERS = {
+    "scripted-ax":    "no model — scripted cua AX (floor)",
+    "local":          "free local MLX 7B · cua **AX**",
+    "local-14b":      "free local MLX 14B · cua **AX**",
+    "mai-ui-pixel":   "free local vision (MAI-UI-8B) · **pixel**",
+    "claude":         "Claude · cua **AX** (computer-use)",
+    "claude-pixel":   "Claude · cua **pixel** (screenshot+click)",
+    "claude-chrome":  "Claude · chrome-devtools-mcp (**DOM**)",
+    "claude-browser": "Claude · agent-browser CLI (**DOM**)",
+    "gpt":            "Codex · cua **AX** (computer-use)",
+}
+
+
+def load_devices() -> list[dict]:
+    devs = []
+    for p in sorted(RESULTS_DIR.glob("*.json")):
+        if p.name in SKIP:
+            continue
+        try:
+            data = json.loads(p.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(data, dict) and "device" in data and "records" in data:
+            devs.append(data)
+    return devs
+
+
+def agg(records: list[dict]) -> dict[tuple[str, str], dict]:
+    rows: dict[tuple[str, str], dict] = {}
+    for c, t in sorted({(r["contender"], r["task"]) for r in records}):
+        rs = [r for r in records if r["contender"] == c and r["task"] == t]
+        times = [r["seconds"] for r in rs
+                 if r.get("success") and r.get("seconds") is not None]
+        steps = [r["steps"] for r in rs if r.get("steps")]
+        costs = [r["cost"] for r in rs if r.get("cost")]
+        rows[(c, t)] = {
+            "n": len(rs),
+            "ok": sum(bool(r.get("success")) for r in rs),
+            "success": f"{100 * sum(bool(r.get('success')) for r in rs) // len(rs)}%",
+            "median": round(statistics.median(times), 1) if times else None,
+            "steps": int(statistics.median(steps)) if steps else "—",
+            "cost": costs[len(costs) // 2] if costs else "—",
+        }
+    return rows
+
+
+def device_section(dev: dict) -> str:
+    d = dev["device"]
+    rows = agg(dev["records"])
+    lines = [
+        f"### {d['name']}",
+        "",
+        f"`{d['chip']}` · {d['ram_gb']} GB · macOS {d.get('macos', '?')} · "
+        f"cua {d.get('cua_driver', '?')} · by **{d.get('contributor', '?')}** · "
+        f"{d.get('date', '?')}",
+        "",
+        "| contender | path | task | n | success | median s | steps | cost |",
+        "|-----------|------|------|---|---------|----------|-------|------|",
+    ]
+    for (c, t), r in rows.items():
+        med = f"{r['median']:.1f}" if r["median"] is not None else "—"
+        lines.append(
+            f"| `{c}` | {CONTENDERS.get(c, '?')} | {t} | {r['n']} | "
+            f"{r['success']} | {med} | {r['steps']} | {r['cost']} |"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def cross_device(devs: list[dict]) -> str:
+    """Median seconds per (contender, task) across machines — appears once ≥2
+    devices have reported."""
+    by_dev = {d["device"]["name"]: agg(d["records"]) for d in devs}
+    pairs = sorted({k for rows in by_dev.values() for k in rows})
+    names = list(by_dev)
+    head = "| contender | task | " + " | ".join(names) + " |"
+    sep = "|" + "---|" * (len(names) + 2)
+    lines = ["## Cross-device (median seconds, success-only)", "", head, sep]
+    for c, t in pairs:
+        cells = []
+        for n in names:
+            r = by_dev[n].get((c, t))
+            if not r:
+                cells.append("—")
+            elif r["median"] is None:
+                cells.append(f"✗ ({r['success']})")
+            else:
+                cells.append(f"{r['median']:.1f} ({r['success']})")
+        lines.append(f"| `{c}` | {t} | " + " | ".join(cells) + " |")
+    lines.append("")
+    return "\n".join(lines)
+
+
+HEADER = """# GhostHands benchmark — results by device
+
+Every brain, identical task, identical hands. Wall-clock starts at goal dispatch
+and stops the instant a **world** check passes (a calculator display value read
+over AX; a destination page title in any browser) — never the agent's own words.
+Local / scripted contenders cost $0 (no tokens); `cost` for the Claude rows is
+the metered `total_cost_usd` Claude Code reports (subscription, not out-of-pocket).
+
+> Auto-generated by `bench/render.py` from `bench/results/*.json`. Do not edit by
+> hand — edit/add a device file and re-run the renderer.
+
+## Add your Mac (3 steps)
+
+```sh
+# 1. run the suite (auto-detects your hardware; --device sets a friendly label)
+.venv/bin/python bench/run_bench.py --runs 5 \\
+    --tasks calc-7x6,web-example-iana \\
+    --contenders scripted-ax,local,claude,claude-chrome,claude-browser \\
+    --device 'M4 Pro MacBook Pro 16" 48GB'
+
+# 2. regenerate this page
+python bench/render.py
+
+# 3. open a PR with your new bench/results/<slug>.json + this RESULTS.md
+```
+
+The harness writes `bench/results/<slug>.json` (e.g. `apple-m4-pro-48gb.json`) and
+merges by (contender, task), so you can run `calc` and `web` in separate passes.
+"""
+
+
+def render() -> str:
+    devs = load_devices()
+    parts = [HEADER]
+    if not devs:
+        parts.append("\n_No device results yet._\n")
+        return "\n".join(parts)
+    if len(devs) >= 2:
+        parts.append("\n" + cross_device(devs))
+    parts.append("\n## Per-device detail\n")
+    for d in sorted(devs, key=lambda x: x["device"]["name"]):
+        parts.append(device_section(d))
+    return "\n".join(parts)
+
+
+if __name__ == "__main__":
+    OUT.write_text(render())
+    print(f"wrote {OUT.relative_to(REPO)}  ({len(load_devices())} device(s))")

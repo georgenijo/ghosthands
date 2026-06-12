@@ -43,6 +43,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
 
+import devices  # noqa: E402 - bench/ is on sys.path when run as a script
 from ghosthands import brains, ownloop, smoke, tasks  # noqa: E402
 from ghosthands.actions import App  # noqa: E402
 
@@ -268,6 +269,26 @@ def summarize(records: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def write_device_file(records: list[dict], device: dict) -> Path:
+    """Merge this run's records into the contributor's per-device file
+    (results/<slug>.json), replacing only the (contender, task) pairs just run
+    so a device file accumulates across separate `calc` / `web` invocations.
+    Transcript paths (machine-local) are stripped before writing."""
+    clean = [{k: v for k, v in r.items() if k != "transcript"} for r in records]
+    path = RESULTS_DIR / f"{device['slug']}.json"
+    kept: list[dict] = []
+    if path.exists():
+        try:
+            prior = json.loads(path.read_text())
+            new_keys = {(r["contender"], r["task"]) for r in clean}
+            kept = [r for r in prior.get("records", [])
+                    if (r["contender"], r["task"]) not in new_keys]
+        except Exception:  # noqa: BLE001 - corrupt/legacy file: start fresh
+            kept = []
+    path.write_text(json.dumps({"device": device, "records": kept + clean}, indent=2))
+    return path
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=5)
@@ -275,7 +296,16 @@ def main() -> int:
     ap.add_argument("--contenders", default="scripted-ax,local,mai-ui-pixel,claude")
     ap.add_argument("--timeout", type=float, default=RUN_TIMEOUT,
                     help="per-run wall-clock cap for subprocess brains (seconds)")
+    ap.add_argument("--device", default="",
+                    help="friendly device label (default: auto from chip+RAM), "
+                         'e.g. \'M4 Pro MacBook Pro 16" 48GB\'')
+    ap.add_argument("--contributor", default="",
+                    help="who ran it (default: git user.name)")
     args = ap.parse_args()
+
+    device = devices.capture(args.device, args.contributor)
+    print(f"device: {device['name']}  ({device['chip']}, {device['ram_gb']}GB, "
+          f"macOS {device['macos']}, cua {device['cua_driver']})", flush=True)
 
     suite = [tasks.ALL_TASKS[t] for t in args.tasks.split(",")]
     contenders = args.contenders.split(",")
@@ -302,9 +332,13 @@ def main() -> int:
                 (RESULTS_DIR / "latest.json").write_text(json.dumps(records, indent=2))
         evict(brain)
 
+    dev_path = write_device_file(records, device)
+
     print()
     print(summarize(records))
-    print(f"\nraw: {RESULTS_DIR / 'latest.json'}  transcripts: {workdir}")
+    print(f"\ndevice results: {dev_path}")
+    print(f"scratch: {RESULTS_DIR / 'latest.json'}  transcripts: {workdir}")
+    print("regenerate the leaderboard:  python bench/render.py")
     return 0
 
 

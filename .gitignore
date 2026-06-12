@@ -5,7 +5,7 @@ config.local.toml
 *.key
 
 # Benchmark + run artifacts
-bench/results/
+bench/results/latest.json   # per-run scratch; committed leaderboard is the per-device files + RESULTS.md
 *.png
 *.jsonl
 *.log

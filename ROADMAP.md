@@ -88,3 +88,20 @@ late, hit the 300 s cap mid-toggle. Claude's calc row (100%) is the clean ceilin
 `--contenders`/`--model` but was dropped from the default set: with the verbose
 calc goal it over-plans (50 steps), whereas 7B-4bit is 100% — a nice "smaller is
 enough on the AX path" result.
+
+## M9 — Multi-path comparison + contributable per-device results
+- [x] Same brain (Claude), swapped **hands**: `claude` (cua AX) vs `claude-pixel`
+  (cua pixel) vs `claude-chrome` (chrome-devtools-mcp DOM) vs `claude-browser`
+  (agent-browser CLI DOM) — `brains.py`.
+- [x] Browser-agnostic world done-detector (any browser's window title) so the
+  Safari / Chrome / Chromium paths compare on one task (`tasks._any_browser_title`).
+- [x] Per-device results: `bench/run_bench.py --device` auto-stamps hardware
+  (`bench/devices.py`) and writes `bench/results/<slug>.json`; `bench/render.py`
+  regenerates the leaderboard `bench/RESULTS.md`. Adding a machine = run → render → PR.
+- **Done when:** the web cross-path table is in `bench/RESULTS.md` and a second
+  machine can drop in its numbers without touching anyone else's data. ✅
+
+Web cross-path (Apple M4 mini, n=3): **pixel = 0% even with Claude as the brain**
+(the brain was never the bottleneck); the free local 7B on AX is the fastest
+model-driven path at $0. DOM paths (agent-browser, chrome-devtools-mcp) ≈ cua AX,
+all ~20s. Full per-device data: `bench/RESULTS.md`.

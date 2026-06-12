@@ -58,18 +58,28 @@ Other commands: `ghosthands doctor` (verify the environment), `ghosthands smoke`
 
 ## The benchmark
 
-Every brain, identical tasks, identical hands. Wall-clock starts at dispatch and stops the instant a **world** check passes (a calculator display value; a Home Assistant entity state via REST — never the agent's own words). N = 5.
+Every brain, identical task, identical hands. Wall-clock starts at dispatch and stops the instant a **world** check passes — a calculator display value read over AX, or the destination page title in any browser — never the agent's own words. Full per-device results and how to add your own Mac: **[bench/RESULTS.md](./bench/RESULTS.md)**.
 
-| contender        | task       | success | median | steps | cost |
-|------------------|------------|---------|--------|-------|------|
-| scripted-ax      | calc 7×6   | 100%    | 7.2s   | —     | $0   |
-| **local 7B (AX)**| calc 7×6   | **100%**| 20.4s  | 5     | **$0** |
-| mai-ui-pixel     | calc 7×6   | **0%**  | —      | 10    | $0   |
-| claude (sub)     | calc 7×6   | 100%    | 37.8s  | 9     | sub  |
-| **local 7B (AX)**| ha-toggle  | **100%**| 14.0s  | 1     | **$0** |
-| mai-ui-pixel     | ha-toggle  | **0%**  | —      | 10    | $0   |
+Measured on an **Apple M4 Mac mini · 24 GB · macOS 27** *(calc n=5, web n=3)*:
 
-**The free local 7B is 100% on both tasks, at $0, and faster than the subscription ceiling.**
+| contender | hands / path | task | success | median | steps | cost\* |
+|-----------|--------------|------|---------|--------|-------|------|
+| `scripted-ax` | no model (floor) | calc 7×6 | 100% | 7.2s | — | $0 |
+| **`local` 7B** | free MLX · **AX** | calc 7×6 | **100%** | 20.4s | 5 | **$0** |
+| `mai-ui-pixel` | free vision · **pixel** | calc 7×6 | **0%** | — | 10 | $0 |
+| `claude` | Claude · cua **AX** | calc 7×6 | 100% | 37.8s | 9 | $0.24 |
+| **`local` 7B** | free MLX · **AX** | web | **100%** | **16.3s** | 1 | **$0** |
+| `claude-browser` | Claude · agent-browser **DOM** | web | 100% | 19.2s | 5 | $0.07 |
+| `claude-chrome` | Claude · chrome-devtools-mcp **DOM** | web | 100% | 22.1s | 5 | $0.08 |
+| `claude` | Claude · cua **AX** | web | 100% | 23.1s | 6 | $0.11 |
+| `claude-pixel` | Claude · cua **pixel** | web | **0%** | — | 19 | — |
+
+\* Local/scripted contenders burn zero tokens; the Claude `cost` is the metered `total_cost_usd` Claude Code reports (subscription, not out-of-pocket).
+
+Two results jump out:
+
+1. **The free local 7B on AX is the fastest *model-driven* path on both tasks, at $0** — beating every Claude path (one AX click vs 5–9 tool round-trips).
+2. **Same brain, different hands:** hand *Claude* the pixel path and it still scores **0%** (3× timeout, ~19 flailing clicks). The brain was never the bottleneck — synthetic pixel clicks don't land on backgrounded windows. DOM tools (agent-browser, chrome-devtools-mcp) and AX all work; pixels don't.
 
 ### Why AX wins and pixels lose (the whole thesis)
 
