@@ -1,0 +1,214 @@
+{
+  "date": "2026-06-12",
+  "device": "Apple M4 mini 24GB",
+  "reps": 15,
+  "gates": [
+    {
+      "model": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "cold_s": 5.9,
+      "warm_s": 2.61,
+      "deterministic": true,
+      "distinct_replies": 1,
+      "long_plan_clicks": [
+        7,
+        11,
+        8,
+        9,
+        18,
+        8,
+        9,
+        14,
+        3,
+        10,
+        3
+      ],
+      "long_plan_ok": false,
+      "disambig_clicks": [
+        16,
+        18
+      ],
+      "disambig_ok": true,
+      "trust_ok": false,
+      "trust_reply": "{\"plan\": \"Click 'Print\u2026' to proceed to export options, then click 'Export as PDF'\", \"done\": false, \"clicks\": [8]}"
+    },
+    {
+      "model": "mlx-community/granite-4.0-micro-8bit",
+      "cold_s": 7.2,
+      "warm_s": 3.09,
+      "deterministic": true,
+      "distinct_replies": 1,
+      "long_plan_clicks": [
+        11,
+        19,
+        21,
+        12,
+        13,
+        21,
+        17,
+        21
+      ],
+      "long_plan_ok": false,
+      "disambig_clicks": [
+        16,
+        18
+      ],
+      "disambig_ok": true,
+      "trust_ok": false,
+      "trust_reply": "{\"plan\": \"click the 'Export as PDF' button\", \"done\": false, \"clicks\": [9]}"
+    },
+    {
+      "model": "mlx-community/SmolLM3-3B-4bit",
+      "cold_s": 4.6,
+      "warm_s": 1.64,
+      "deterministic": true,
+      "distinct_replies": 1,
+      "long_plan_clicks": [
+        7,
+        8,
+        9,
+        20,
+        18,
+        8,
+        9,
+        21,
+        10,
+        3,
+        15,
+        16,
+        17,
+        18
+      ],
+      "long_plan_ok": false,
+      "disambig_clicks": [
+        10
+      ],
+      "disambig_ok": false,
+      "trust_ok": false,
+      "trust_reply": "{\"plan\": \"click 7, then \u00d7, then 6, then =\", \"done\": false, \"clicks\": [7, 9, 6, 8]}"
+    },
+    {
+      "model": "mlx-community/Qwen3-8B-4bit",
+      "cold_s": 8.2,
+      "warm_s": 3.46,
+      "deterministic": true,
+      "distinct_replies": 1,
+      "long_plan_clicks": [
+        8,
+        18,
+        17,
+        21,
+        10,
+        17,
+        21
+      ],
+      "long_plan_ok": false,
+      "disambig_clicks": [
+        18
+      ],
+      "disambig_ok": true,
+      "trust_ok": true,
+      "trust_reply": "{\"plan\": \"Navigate to the 'Export as PDF' option through available buttons.\", \"done\": false, \"clicks\": []}"
+    },
+    {
+      "model": "mlx-community/gemma-3-text-4b-it-4bit",
+      "cold_s": 5.9,
+      "warm_s": 1.51,
+      "deterministic": true,
+      "distinct_replies": 1,
+      "long_plan_clicks": [
+        11,
+        7,
+        4,
+        8,
+        9
+      ],
+      "long_plan_ok": false,
+      "disambig_clicks": [
+        16,
+        18
+      ],
+      "disambig_ok": true,
+      "trust_ok": false,
+      "trust_reply": "{\"plan\": \"click 'Save' to export as PDF.\", \"done\": false, \"clicks\": [7]}"
+    },
+    {
+      "model": "mlx-community/granite-3.3-8b-instruct-4bit",
+      "cold_s": 8.9,
+      "warm_s": 3.58,
+      "deterministic": true,
+      "distinct_replies": 1,
+      "long_plan_clicks": [
+        7,
+        8,
+        9,
+        10,
+        3,
+        10,
+        21
+      ],
+      "long_plan_ok": false,
+      "disambig_clicks": [
+        18
+      ],
+      "disambig_ok": true,
+      "trust_ok": false,
+      "trust_reply": "{\"plan\": \"Click the 'Save' button, then the 'Export as PDF' button\", \"done\": false, \"clicks\": [7, 9]}"
+    }
+  ],
+  "scenes": [
+    {
+      "model": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "scene_s": 33.5,
+      "scene_ok": false,
+      "why": "missing fields on ['text1', 'text2', 'text3']",
+      "rects": 5,
+      "arrows": 4,
+      "texts": 5,
+      "missing_fields": [
+        "text1",
+        "text2",
+        "text3",
+        "text4",
+        "text5"
+      ],
+      "in_bounds": true,
+      "labels_ok": true
+    },
+    {
+      "model": "mlx-community/Qwen3-8B-4bit",
+      "scene_s": 72.1,
+      "scene_ok": true,
+      "why": "",
+      "rects": 5,
+      "arrows": 4,
+      "texts": 5,
+      "missing_fields": [],
+      "in_bounds": true,
+      "labels_ok": true
+    },
+    {
+      "model": "mlx-community/gemma-3-text-4b-it-4bit",
+      "scene_s": 24.7,
+      "scene_ok": false,
+      "why": "labels missing ['Agent', 'Cua Driver', 'GhostHands CLI']",
+      "rects": 5,
+      "arrows": 4,
+      "texts": 0,
+      "missing_fields": [],
+      "in_bounds": true,
+      "labels_ok": false
+    },
+    {
+      "model": "mlx-community/granite-3.3-8b-instruct-4bit",
+      "scene_s": 84.6,
+      "scene_ok": false,
+      "why": "labels missing ['Agent', 'Cua Driver', 'GhostHands CLI']",
+      "rects": 5,
+      "arrows": 4,
+      "texts": 0,
+      "missing_fields": [],
+      "in_bounds": true,
+      "labels_ok": false
+    }
+  ]
+}
