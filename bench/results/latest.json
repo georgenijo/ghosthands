@@ -1,326 +1,89 @@
 [
   {
     "contender": "scripted-ax",
-    "task": "calc-7x6",
+    "task": "web-example-iana",
     "success": true,
-    "seconds": 7.2,
+    "seconds": 8.3,
     "steps": null,
     "cost": "$0",
     "error": null
   },
   {
     "contender": "scripted-ax",
-    "task": "calc-7x6",
+    "task": "web-example-iana",
     "success": true,
-    "seconds": 7.2,
+    "seconds": 8.2,
     "steps": null,
     "cost": "$0",
     "error": null
   },
   {
     "contender": "scripted-ax",
-    "task": "calc-7x6",
+    "task": "web-example-iana",
     "success": true,
-    "seconds": 7.3,
+    "seconds": 8.2,
     "steps": null,
     "cost": "$0",
     "error": null
   },
   {
-    "contender": "scripted-ax",
-    "task": "calc-7x6",
+    "contender": "claude-chrome",
+    "task": "web-example-iana",
     "success": true,
-    "seconds": 7.2,
-    "steps": null,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "scripted-ax",
-    "task": "calc-7x6",
-    "success": true,
-    "seconds": 7.2,
-    "steps": null,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "scripted-ax",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 4.8,
-    "steps": null,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "scripted-ax",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 4.9,
-    "steps": null,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "scripted-ax",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 4.8,
-    "steps": null,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "scripted-ax",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 4.8,
-    "steps": null,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "scripted-ax",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 4.9,
-    "steps": null,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "local",
-    "task": "calc-7x6",
-    "success": true,
-    "seconds": 21.7,
+    "seconds": 22.5,
     "steps": 5,
-    "cost": "$0",
-    "error": null
+    "cost": "$0.23",
+    "error": null,
+    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-fyfv9n5z/claude-chrome-web-example-iana-176546.log"
   },
   {
-    "contender": "local",
-    "task": "calc-7x6",
+    "contender": "claude-chrome",
+    "task": "web-example-iana",
     "success": true,
-    "seconds": 20.2,
+    "seconds": 22.1,
     "steps": 5,
-    "cost": "$0",
-    "error": null
+    "cost": "$0.08",
+    "error": null,
+    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-fyfv9n5z/claude-chrome-web-example-iana-176575.log"
   },
   {
-    "contender": "local",
-    "task": "calc-7x6",
+    "contender": "claude-chrome",
+    "task": "web-example-iana",
     "success": true,
-    "seconds": 20.5,
+    "seconds": 19.3,
     "steps": 5,
-    "cost": "$0",
-    "error": null
+    "cost": "$0.08",
+    "error": null,
+    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-fyfv9n5z/claude-chrome-web-example-iana-176604.log"
   },
   {
-    "contender": "local",
-    "task": "calc-7x6",
+    "contender": "claude-browser",
+    "task": "web-example-iana",
     "success": true,
-    "seconds": 20.4,
+    "seconds": 19.2,
     "steps": 5,
-    "cost": "$0",
-    "error": null
+    "cost": "$0.11",
+    "error": null,
+    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-fyfv9n5z/claude-browser-web-example-iana-176631.log"
   },
   {
-    "contender": "local",
-    "task": "calc-7x6",
+    "contender": "claude-browser",
+    "task": "web-example-iana",
     "success": true,
-    "seconds": 20.4,
+    "seconds": 22.1,
+    "steps": 6,
+    "cost": "$0.07",
+    "error": null,
+    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-fyfv9n5z/claude-browser-web-example-iana-176655.log"
+  },
+  {
+    "contender": "claude-browser",
+    "task": "web-example-iana",
+    "success": true,
+    "seconds": 18.3,
     "steps": 5,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "local",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 14.0,
-    "steps": 1,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "local",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 14.0,
-    "steps": 1,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "local",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 14.0,
-    "steps": 1,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "local",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 14.2,
-    "steps": 1,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "local",
-    "task": "ha-toggle",
-    "success": true,
-    "seconds": 14.2,
-    "steps": 1,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "calc-7x6",
-    "success": false,
-    "seconds": null,
-    "steps": 10,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "calc-7x6",
-    "success": false,
-    "seconds": null,
-    "steps": 10,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "calc-7x6",
-    "success": false,
-    "seconds": null,
-    "steps": 10,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "calc-7x6",
-    "success": false,
-    "seconds": null,
-    "steps": 10,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "calc-7x6",
-    "success": false,
-    "seconds": null,
-    "steps": 10,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "ha-toggle",
-    "success": false,
-    "seconds": null,
-    "steps": 10,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "ha-toggle",
-    "success": false,
-    "seconds": null,
-    "steps": 10,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "ha-toggle",
-    "success": false,
-    "seconds": null,
-    "steps": 5,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "ha-toggle",
-    "success": false,
-    "seconds": null,
-    "steps": 0,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "mai-ui-pixel",
-    "task": "ha-toggle",
-    "success": false,
-    "seconds": null,
-    "steps": 0,
-    "cost": "$0",
-    "error": null
-  },
-  {
-    "contender": "claude",
-    "task": "calc-7x6",
-    "success": true,
-    "seconds": 37.8,
-    "steps": 8,
-    "cost": "$0.36",
-    "error": null
-  },
-  {
-    "contender": "claude",
-    "task": "calc-7x6",
-    "success": true,
-    "seconds": 31.8,
-    "steps": 9,
-    "cost": "$0.20",
-    "error": null
-  },
-  {
-    "contender": "claude",
-    "task": "calc-7x6",
-    "success": true,
-    "seconds": 43.5,
-    "steps": 11,
-    "cost": "$0.24",
-    "error": null
-  },
-  {
-    "contender": "claude",
-    "task": "calc-7x6",
-    "success": true,
-    "seconds": 34.4,
-    "steps": 9,
-    "cost": "$0.20",
-    "error": null
-  },
-  {
-    "contender": "claude",
-    "task": "calc-7x6",
-    "success": true,
-    "seconds": 41.0,
-    "steps": 8,
-    "cost": "$0.19",
-    "error": null
-  },
-  {
-    "contender": "claude",
-    "task": "ha-toggle",
-    "success": false,
-    "seconds": null,
-    "steps": 52,
-    "cost": null,
-    "error": "timeout 300.0s"
+    "cost": "$0.06",
+    "error": null,
+    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-fyfv9n5z/claude-browser-web-example-iana-176688.log"
   }
 ]

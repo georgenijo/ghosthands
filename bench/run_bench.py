@@ -156,7 +156,8 @@ def evict(brain) -> None:
 
 # --- measurement core --------------------------------------------------------
 
-def run_once(contender: str, task: tasks.Task, brain, workdir: str) -> dict:
+def run_once(contender: str, task: tasks.Task, brain, workdir: str,
+             timeout: float = RUN_TIMEOUT) -> dict:
     task.setup()
     if task.done_check():
         raise RuntimeError(f"{task.name}: done-detector already true after setup")
@@ -186,10 +187,13 @@ def run_once(contender: str, task: tasks.Task, brain, workdir: str) -> dict:
             time.sleep(1)
         return rec
 
-    # subprocess brains (claude / gpt) — full-auto, polled done-detector
+    # subprocess brains (claude* / gpt) — full-auto, polled done-detector.
+    # DOM contenders bring their own browser, so they get the browser-neutral
+    # goal (no "Safari"); cua/pixel contenders get the Safari-framed goal.
     brain_spec = brains.select(contender)
-    argv, _ = brain_spec.command(task.goal, brains.skill_text())
-    if contender == "claude":
+    goal = task.browser_goal() if contender in ("claude-chrome", "claude-browser") else task.goal
+    argv, _ = brain_spec.command(goal, brains.skill_text())
+    if contender.startswith("claude"):
         argv += ["--output-format", "stream-json", "--verbose"]
     out_path = Path(workdir) / f"{contender}-{task.name}-{int(t0)}.log"
     with open(out_path, "w") as out_file:
@@ -199,9 +203,9 @@ def run_once(contender: str, task: tasks.Task, brain, workdir: str) -> dict:
         while proc.poll() is None:
             if done_at is None and task.done_check():
                 done_at = time.monotonic()
-            if time.monotonic() - t0 > RUN_TIMEOUT:
+            if time.monotonic() - t0 > timeout:
                 proc.kill()
-                rec["error"] = f"timeout {RUN_TIMEOUT}s"
+                rec["error"] = f"timeout {timeout}s"
                 break
             time.sleep(POLL_SECONDS)
         proc.wait(timeout=30)
@@ -218,7 +222,7 @@ def run_once(contender: str, task: tasks.Task, brain, workdir: str) -> dict:
 
 
 def count_steps(contender: str, output: str) -> int | None:
-    if contender == "claude":
+    if contender.startswith("claude"):
         return output.count('"type":"tool_use"') or None
     if contender == "gpt":
         return len(re.findall(r"mcp: cua-driver/\S+ started", output)) or None
@@ -226,7 +230,7 @@ def count_steps(contender: str, output: str) -> int | None:
 
 
 def extract_cost(contender: str, output: str) -> str | None:
-    if contender == "claude":
+    if contender.startswith("claude"):
         m = re.search(r'"total_cost_usd":\s*([0-9.]+)', output)
         return f"${float(m.group(1)):.2f}" if m else None
     if contender == "gpt":
@@ -269,6 +273,8 @@ def main() -> int:
     ap.add_argument("--runs", type=int, default=5)
     ap.add_argument("--tasks", default="calc-7x6,ha-toggle")
     ap.add_argument("--contenders", default="scripted-ax,local,mai-ui-pixel,claude")
+    ap.add_argument("--timeout", type=float, default=RUN_TIMEOUT,
+                    help="per-run wall-clock cap for subprocess brains (seconds)")
     args = ap.parse_args()
 
     suite = [tasks.ALL_TASKS[t] for t in args.tasks.split(",")]
@@ -285,7 +291,7 @@ def main() -> int:
                 label = f"[{contender} × {task.name} {i + 1}/{args.runs}]"
                 print(f"{label} running…", flush=True)
                 try:
-                    rec = run_once(contender, task, brain, workdir)
+                    rec = run_once(contender, task, brain, workdir, args.timeout)
                 except Exception as e:  # noqa: BLE001
                     rec = {"contender": contender, "task": task.name, "success": False,
                            "seconds": None, "steps": None, "cost": None,

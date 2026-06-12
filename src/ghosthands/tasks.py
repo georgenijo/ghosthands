@@ -41,9 +41,16 @@ class Task:
     window_title: str = ""       # substring identifying the target window/tab
     simple_goal: str = ""        # goal for own-loop brains (page pre-opened by
                                  # the loop); defaults to `goal` when empty
+    dom_goal: str = ""           # browser-neutral goal for DOM contenders
+                                 # (chrome-devtools-mcp / agent-browser): names
+                                 # no specific browser, since those tools bring
+                                 # their own. Defaults to `goal` when empty.
 
     def loop_goal(self) -> str:
         return self.simple_goal or self.goal
+
+    def browser_goal(self) -> str:
+        return self.dom_goal or self.goal
 
 
 def _running_pid(bundle_id: str) -> int | None:
@@ -133,16 +140,52 @@ def _safari_title_active(fragment: str) -> bool:
     return any(fragment in (w.get("title") or "") for w in _on_screen_windows(pid))
 
 
+# Browser-agnostic world check: the WEB task is run by contenders that each
+# bring a DIFFERENT browser — Safari (cua AX / pixel, local 7B, scripted),
+# Chrome (chrome-devtools-mcp), Chromium (agent-browser/Playwright). So the
+# done-detector can't key on one browser; it scans every running browser-ish
+# app's on-screen window titles for the destination page title.
+_BROWSER_HINTS = ("safari", "chrome", "chromium", "brave", "edge", "firefox",
+                  "webkit", "playwright")
+
+
+def _any_browser_title(fragment: str) -> bool:
+    apps = driver.call("list_apps", {})
+    items = apps.get("apps", apps) if isinstance(apps, dict) else apps
+    for a in items or []:
+        if not a.get("running"):
+            continue
+        name = (a.get("name") or a.get("bundle_id") or "").lower()
+        if not any(h in name for h in _BROWSER_HINTS):
+            continue
+        pid = a.get("pid")
+        if pid is None:
+            continue
+        try:
+            for w in _on_screen_windows(pid):
+                if fragment in (w.get("title") or ""):
+                    return True
+        except (driver.DriverError, KeyError, TypeError):
+            continue
+    return False
+
+
 def _web_setup() -> None:
+    # Clear any prior "Example Domains" window across the browsers contenders
+    # use, so the done-detector isn't pre-satisfied. Touches only idle Safari
+    # and the contenders' OWN ephemeral browsers — never the user's daily Brave.
     subprocess.run(
         ["osascript", "-e", 'tell application "Safari" to quit'],
         capture_output=True, timeout=15,
     )
+    subprocess.run(["agent-browser", "close", "--all"],
+                   capture_output=True, timeout=20)
+    # chrome-devtools-mcp Chrome dies with the claude subprocess (--isolated).
     time.sleep(2)
 
 
 def _web_done() -> bool:
-    return _safari_title_active(_IANA_TITLE)
+    return _any_browser_title(_IANA_TITLE)
 
 
 WEB = Task(
@@ -155,6 +198,21 @@ WEB = Task(
     ),
     setup=_web_setup,
     done_check=_web_done,
+    # own-loop (local 7B / scripted) drive Safari via cua AX:
+    bundle_id=SAFARI_BUNDLE,
+    url="https://example.com",
+    window_title="Example",
+    simple_goal=(
+        "The page https://example.com is open. Click the 'Learn more' link on "
+        "it. Done when the IANA 'Example Domains' page has loaded."
+    ),
+    # DOM contenders (chrome-devtools-mcp / agent-browser) bring their own
+    # browser — name none:
+    dom_goal=(
+        "Open https://example.com, then click the 'Learn more' link on that "
+        "page. You are done when the IANA page titled 'Example Domains' has "
+        "loaded."
+    ),
 )
 
 

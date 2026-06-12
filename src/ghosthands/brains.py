@@ -41,6 +41,40 @@ TASK_PREAMBLE = (
     "TASK: "
 )
 
+# Same brain (Claude), different HANDS — used by the path-comparison contenders.
+PIXEL_PREAMBLE = (
+    "You control macOS through the cua-driver MCP tools (computer use) using "
+    "PIXEL COORDINATES ONLY — this is a screenshot+click test. Do NOT use "
+    "element_index / accessibility targeting. Each turn: call get_window_state "
+    "with capture_mode 'vision' to get a screenshot of the target window, "
+    "reason about the on-screen pixel location of the target, then click by "
+    "passing x and y (window-local screenshot pixels) to the click tool — "
+    "never element_index. Work cursor-less: never pass a 'session'. Verify with "
+    "an after-screenshot.\nTASK: "
+)
+
+CHROME_PREAMBLE = (
+    "You control a web browser through the chrome-devtools MCP tools. Use ONLY "
+    "those tools — no shell, no other browser or computer-use tools. Navigate "
+    "to the page, find the link by its visible text, and click it. Verify the "
+    "destination page loaded before finishing.\nTASK: "
+)
+
+BROWSER_PREAMBLE = (
+    "You control a web browser ONLY through the `agent-browser` command-line "
+    "tool, which you run via the Bash tool. Do NOT use any MCP or computer-use "
+    "tools. ALWAYS pass --headed so the window is visible. Core commands:\n"
+    "  agent-browser open --headed <url>          # launch + navigate\n"
+    "  agent-browser find text \"<text>\" click     # find by visible text, click\n"
+    "  agent-browser find role link <action>      # find by ARIA role\n"
+    "  agent-browser click \"<css-or-@ref>\"        # click a selector / @ref\n"
+    "  agent-browser get title                     # current page <title>\n"
+    "  agent-browser get url                       # current URL\n"
+    "  agent-browser snapshot                      # a11y tree with @refs\n"
+    "Run `agent-browser skills get core --full` if you need more commands. "
+    "Verify the destination page title before finishing.\nTASK: "
+)
+
 DEFAULT_PRIORITY = ["claude", "gpt"]  # subscription brains; order configurable
 
 
@@ -85,6 +119,56 @@ class ClaudeBrain(Brain):
 
 
 @dataclass
+class ClaudePixelBrain(Brain):
+    """Claude + cua-driver, PIXEL path (screenshot → x,y click). The
+    computer-use 'Anthropic CU' flavor; contrast with the AX `claude` row."""
+
+    def command(self, goal: str, skill: str) -> tuple[list[str], str | None]:
+        mcp = json.dumps({
+            "mcpServers": {"cua-driver": {"command": DRIVER_BIN, "args": ["mcp"]}}
+        })
+        return ([
+            "claude", "-p", PIXEL_PREAMBLE + goal,  # no AX skill: pixels only
+            "--mcp-config", mcp,
+            "--strict-mcp-config",
+            "--permission-mode", "bypassPermissions",
+        ], None)
+
+
+@dataclass
+class ClaudeChromeBrain(Brain):
+    """Claude + chrome-devtools-mcp — the DOM-over-MCP path (its own Chrome)."""
+
+    def command(self, goal: str, skill: str) -> tuple[list[str], str | None]:
+        mcp = json.dumps({
+            "mcpServers": {"chrome-devtools": {
+                "command": "npx",
+                "args": ["-y", "chrome-devtools-mcp@latest", "--isolated"],
+            }}
+        })
+        return ([
+            "claude", "-p", CHROME_PREAMBLE + goal,
+            "--mcp-config", mcp,
+            "--strict-mcp-config",
+            "--permission-mode", "bypassPermissions",
+        ], None)
+
+
+@dataclass
+class ClaudeBrowserBrain(Brain):
+    """Claude + agent-browser CLI via Bash — the DOM-over-CLI path. Empty MCP
+    config (strict) forces it onto agent-browser, not any global cua server."""
+
+    def command(self, goal: str, skill: str) -> tuple[list[str], str | None]:
+        return ([
+            "claude", "-p", BROWSER_PREAMBLE + goal,
+            "--mcp-config", json.dumps({"mcpServers": {}}),
+            "--strict-mcp-config",
+            "--permission-mode", "bypassPermissions",
+        ], None)
+
+
+@dataclass
 class CodexBrain(Brain):
     def command(self, goal: str, skill: str) -> tuple[list[str], str | None]:
         # No system-prompt slot: skill rides at the top of the prompt.
@@ -123,6 +207,37 @@ def _detect_codex() -> Brain:
     return CodexBrain("gpt", "Codex CLI", "subscription", True, out.splitlines()[0])
 
 
+def _detect_claude_pixel() -> Brain:
+    base = _detect_claude()
+    detail = base.detail if base.available else f"claude: {base.detail}"
+    return ClaudePixelBrain("claude-pixel", "Claude + cua-driver (pixel)",
+                            "subscription", base.available, detail)
+
+
+def _detect_claude_chrome() -> Brain:
+    base = _detect_claude()
+    if not base.available:
+        return ClaudeChromeBrain("claude-chrome", "Claude + chrome-devtools-mcp",
+                                 "subscription", False, f"claude: {base.detail}")
+    if not shutil.which("npx"):
+        return ClaudeChromeBrain("claude-chrome", "Claude + chrome-devtools-mcp",
+                                 "subscription", False, "npx not on PATH")
+    return ClaudeChromeBrain("claude-chrome", "Claude + chrome-devtools-mcp",
+                             "subscription", True, f"{base.detail} + chrome-devtools-mcp")
+
+
+def _detect_claude_browser() -> Brain:
+    base = _detect_claude()
+    if not base.available:
+        return ClaudeBrowserBrain("claude-browser", "Claude + agent-browser",
+                                  "subscription", False, f"claude: {base.detail}")
+    if not shutil.which("agent-browser"):
+        return ClaudeBrowserBrain("claude-browser", "Claude + agent-browser",
+                                  "subscription", False, "agent-browser not on PATH")
+    return ClaudeBrowserBrain("claude-browser", "Claude + agent-browser",
+                              "subscription", True, f"{base.detail} + agent-browser")
+
+
 def _detect_api_keys() -> list[Brain]:
     found = []
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -135,7 +250,9 @@ def _detect_api_keys() -> list[Brain]:
 
 
 def detect_all() -> list[Brain]:
-    return [_detect_claude(), _detect_codex(), *_detect_api_keys()]
+    return [_detect_claude(), _detect_codex(),
+            _detect_claude_pixel(), _detect_claude_chrome(), _detect_claude_browser(),
+            *_detect_api_keys()]
 
 
 def select(brain: str = "auto", priority: list[str] | None = None) -> Brain:
