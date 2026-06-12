@@ -276,8 +276,7 @@
     "seconds": 37.8,
     "steps": 8,
     "cost": "$0.36",
-    "error": null,
-    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-ys2vgc59/claude-calc-7x6-172841.log"
+    "error": null
   },
   {
     "contender": "claude",
@@ -286,8 +285,7 @@
     "seconds": 31.8,
     "steps": 9,
     "cost": "$0.20",
-    "error": null,
-    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-ys2vgc59/claude-calc-7x6-172890.log"
+    "error": null
   },
   {
     "contender": "claude",
@@ -296,8 +294,7 @@
     "seconds": 43.5,
     "steps": 11,
     "cost": "$0.24",
-    "error": null,
-    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-ys2vgc59/claude-calc-7x6-172937.log"
+    "error": null
   },
   {
     "contender": "claude",
@@ -306,8 +303,7 @@
     "seconds": 34.4,
     "steps": 9,
     "cost": "$0.20",
-    "error": null,
-    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-ys2vgc59/claude-calc-7x6-172996.log"
+    "error": null
   },
   {
     "contender": "claude",
@@ -316,8 +312,7 @@
     "seconds": 41.0,
     "steps": 8,
     "cost": "$0.19",
-    "error": null,
-    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-ys2vgc59/claude-calc-7x6-173043.log"
+    "error": null
   },
   {
     "contender": "claude",
@@ -326,7 +321,6 @@
     "seconds": null,
     "steps": 52,
     "cost": null,
-    "error": "timeout 300.0s",
-    "transcript": "/var/folders/5y/7ffll3915cq42q02v_cr_gx40000gn/T/ghosthands-bench-ys2vgc59/claude-ha-toggle-173093.log"
+    "error": "timeout 300.0s"
   }
 ]
