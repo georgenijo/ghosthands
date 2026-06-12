@@ -45,15 +45,22 @@ Excalidraw accepts a **plain-text** clipboard payload of the form:
 Put it on the pasteboard (`pbcopy`), focus the canvas, send one `Cmd+V`.
 One paste replaces minutes of drawing.
 
-Caveats (both hit in practice):
+Caveats (all hit in practice):
 - A synthesized `Cmd+V` keystroke can be silently eaten if another window
   (e.g. a crash dialog) grabs key routing. The reliable trigger is the AX
   menu item: snapshot with query `AXMenuItem "Paste"` and `click` its
   element_index (`id=paste:`) — works regardless of focus and verifies as
   an AXPress.
-- Verify the paste landed before claiming success: re-snapshot and check the
-  "Selected shape actions" panel appeared (pasted elements arrive selected),
-  then `Shift+1` to zoom-to-fit.
+- **The clipboard is shared, live state.** On a machine the user is actively
+  using (screenshot tools, dictation, their own copies), the pasteboard can
+  be overwritten between your `pbcopy` and the paste — you will paste *their*
+  clipboard and not notice. Minimize the pbcopy→paste gap.
+- **"Something pasted" is not verification.** The "Selected shape actions"
+  panel appears for ANY pasted element — including a stray text line. The
+  real check is a **round-trip**: Select All → Edit→Copy (AX menu,
+  `id=copy:`) → `pbpaste` → parse and compare element types/counts against
+  the scene you sent. Only then claim success; finish with `Shift+1`
+  zoom-to-fit.
 
 ## Recipe 3 — Mermaid text-to-diagram dialog (AX-only fallback)
 
