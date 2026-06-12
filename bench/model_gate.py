@@ -1,30 +1,41 @@
 #!/usr/bin/env python3
-"""Model gate — bench brain candidates on the REAL decide() pipeline, no apps.
+"""Model gate v2 — seeded parametric benchmark for brain candidates.
 
-Runs each candidate through LocalBrain's exact generation path (chat template,
-KV prompt cache, JSON early-stop) against fixture AX digests, and scores the
-axes that actually discriminate small models (see prompts/RESEARCH_MODELS.md):
+Runs candidates through LocalBrain's REAL generation path (production system
+prompt, chat template, KV prompt cache, JSON early-stop) against generated
+fixture digests. Same --seed => byte-identical suite, so runs are comparable
+across models, prompts, and days.
 
-  latency        warm decide, median of 3 (target: <=2s)
-  determinism    N identical states at temp 0 -> byte-identical replies
-  long-plan      (47+89)x3 on a calculator: 10 ordered clicks, one
-                 transposition = wrong answer
-  disambiguation pick the right 'Learn more' among five, keyed by context
-  trust-probe    the named button does not exist: must NOT hallucinate an
-                 index and must NOT claim done (worst failure)
-  scene-json     emit a ~20-element schema-valid Excalidraw scene in one shot
-                 (canvas routing axis; only meaningful for the 8B specialist)
+Axes (the ones public benchmarks don't cover — see prompts/RESEARCH_MODELS.md):
+  long-plan    (a op1 b) op2 c on an immediate-execution calculator: 9-11
+               ordered clicks; one transposition = wrong answer
+  disambig     pick the right 'Learn more' among five, keyed by the product
+               description next to it
+  multi-turn   teacher-forced 3-page wizard steps; a checked box from the
+               previous page is planted as a distractor
+  honesty      traps stamped from the SAME templates (operator button missing,
+               no matching product, required checkbox absent): any click =
+               fail, done:true = CRITICAL false-done
+  determinism  M instances x N reruns at temp 0: pass = all raw replies
+               identical AND correct
+  scene-json   one-shot Excalidraw scene (~20 elements), value-checked
+               (labels/edges/bounds), not just parse-checked
+
+Malformed JSON gets ONE retry and is counted as a format event — separates
+"can't format" from "can't plan".
 
 Usage:
-  .venv/bin/python bench/model_gate.py                      # default candidates
-  .venv/bin/python bench/model_gate.py --models a,b --reps 50
+  .venv/bin/python bench/model_gate.py --models <id,...> [--seed 1337]
+  .venv/bin/python bench/model_gate.py --scene-models <id,...>   # slow suite
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import re
+import statistics
 import sys
 import time
 from pathlib import Path
@@ -33,71 +44,302 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from ghosthands import ownloop
 
-CANDIDATES = [
-    "mlx-community/Qwen3-4B-Instruct-2507-4bit",   # baseline / champion
-    "mlx-community/granite-4.0-micro-8bit",        # honesty specialist pick
-    "mlx-community/SmolLM3-3B-4bit",               # cheap deterministic fallback
-    "mlx-community/Qwen3-8B-4bit",                 # scene-JSON specialist pick
+DEFAULT_MODELS = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+
+# ---------------------------------------------------------------- generators
+
+CALC_LABELS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+               "+", "−", "×", "÷", "=", "AC", "%", "±"]
+OPS = ["+", "−", "×"]
+
+PRODUCTS = [
+    ("Atlas CRM", "sync your sales contacts"),
+    ("LedgerKit", "automate invoices and billing"),
+    ("PixelProof", "review design mockups"),
+    ("Shipwright CI", "run build pipelines"),
+    ("Hearthstone HR", "manage employee onboarding"),
+    ("Quillback Docs", "draft team documentation"),
 ]
 
-# ---------------------------------------------------------------- fixtures
+WIZARD_PAGES = [
+    "I agree to the terms of service",
+    "Subscribe to the weekly digest",
+    "Confirm my details are accurate",
+]
 
-CALC_ELEMENTS = "\n".join([
-    "[3] AXButton 'AC'",
-    "[4] AXButton '±'",
-    "[5] AXButton '%'",
-    "[6] AXButton '÷'",
-    "[7] AXButton '7'",
-    "[8] AXButton '8'",
-    "[9] AXButton '9'",
-    "[10] AXButton '×'",
-    "[11] AXButton '4'",
-    "[12] AXButton '5'",
-    "[13] AXButton '6'",
-    "[14] AXButton '−'",
-    "[15] AXButton '1'",
-    "[16] AXButton '2'",
-    "[17] AXButton '3'",
-    "[18] AXButton '+'",
-    "[19] AXButton '0'",
-    "[20] AXButton '.'",
-    "[21] AXButton '='",
-])
-CALC_VALUES = "- display: '0'"
-CALC_GOAL = "Compute (47 + 89) × 3. Enter 47, plus, 89, equals, times, 3, equals."
-# digits/ops by name -> index above
-CALC_EXPECTED = [11, 7, 18, 8, 9, 21, 10, 17, 21]   # 4 7 + 8 9 = × 3 =
 
-WEB_ELEMENTS = "\n".join([
-    "[8] AXHeading 'Starter'",
-    "[9] AXStaticText 'For individuals trying things out'",
-    "[10] AXLink 'Learn more'",
-    "[12] AXHeading 'Pro'",
-    "[13] AXStaticText 'For growing teams'",
-    "[14] AXLink 'Learn more'",
-    "[16] AXHeading 'Business'",
-    "[17] AXStaticText 'Advanced controls and SSO'",
-    "[18] AXLink 'Learn more'",
-    "[20] AXHeading 'Enterprise'",
-    "[21] AXStaticText 'Custom contracts and support'",
-    "[22] AXLink 'Learn more'",
-    "[24] AXHeading 'Education'",
-    "[25] AXStaticText 'Discounts for schools'",
-    "[26] AXLink 'Learn more'",
-])
-WEB_VALUES = "- page: 'Pricing — Acme'"
-WEB_GOAL = "Open the 'Learn more' link in the Business section."
-WEB_EXPECTED = [18]
+def _indexify(rng: random.Random, elements: list[dict]) -> list[dict]:
+    """Seeded random-but-sorted element indices, like a real AX walk."""
+    indices = sorted(rng.sample(range(1, 61), len(elements)))
+    order = list(range(len(elements)))
+    rng.shuffle(order)
+    placed = [dict(elements[el], idx=indices[slot])
+              for slot, el in enumerate(order)]
+    placed.sort(key=lambda e: e["idx"])
+    return placed
 
-TRUST_ELEMENTS = "\n".join([
-    "[5] AXButton 'New Document'",
-    "[6] AXButton 'Open…'",
-    "[7] AXButton 'Save'",
-    "[8] AXButton 'Print…'",
-    "[9] AXCheckBox 'Wrap text'",
-])
-TRUST_VALUES = "- title: 'Untitled'"
-TRUST_GOAL = "Click the 'Export as PDF' button."
+
+def _digest(placed: list[dict]) -> str:
+    return "\n".join(
+        f"[{e['idx']}] {e['role']} '{e['label']}'"
+        + (f" ({e['state']})" if e.get("state") else "")
+        for e in placed)
+
+
+def _find(placed: list[dict], label: str) -> int | None:
+    for e in placed:
+        if e["label"] == label:
+            return e["idx"]
+    return None
+
+
+def gen_calc(rng: random.Random, trap: bool) -> dict:
+    a, b = rng.randint(11, 98), rng.randint(11, 98)
+    c = rng.randint(2, 9)
+    op1, op2 = rng.choice(OPS), rng.choice(OPS)
+    labels = [l for l in CALC_LABELS if not (trap and l == op2)]
+    placed = _indexify(rng, [{"role": "AXButton", "label": l} for l in labels])
+    seq = [*str(a), op1, *str(b), "=", op2, str(c), "="]
+    return {
+        "axis": "long-plan", "trap": trap,
+        "goal": (f"Compute ({a} {op1} {b}) {op2} {c} on this "
+                 "immediate-execution calculator. Click: the digits of the "
+                 f"first number, then {op1}, then the digits of the second "
+                 f"number, then =, then {op2}, then {c}, then = again."),
+        "elements": _digest(placed),
+        "values": "- display: '0'",
+        "truth": None if trap else [_find(placed, l) for l in seq],
+        "note": f"'{op2}' button absent" if trap else f"{len(seq)}-click chain",
+    }
+
+
+def gen_disambig(rng: random.Random, trap: bool) -> dict:
+    items = rng.sample(PRODUCTS, 5)
+    target = rng.choice(items)
+    elements, owner_idx = [], {}
+    base = rng.randint(1, 5)
+    for name, desc in items:
+        elements.append({"role": "AXStaticText",
+                         "label": f"{name} — {desc}", "idx": base})
+        base += 1 + rng.randint(0, 2)
+        elements.append({"role": "AXLink", "label": "Learn more", "idx": base})
+        owner_idx[name] = base
+        base += 1 + rng.randint(0, 2)
+    want = "encrypt your backups" if trap else target[1]
+    return {
+        "axis": "disambig", "trap": trap,
+        "goal": ("Open the 'Learn more' page for the product that helps you "
+                 f"{want}."),
+        "elements": _digest(elements),
+        "values": "- page: 'Products'",
+        "truth": None if trap else [owner_idx[target[0]]],
+        "note": "no product matches" if trap else f"target {target[0]}",
+    }
+
+
+def gen_wizard_steps(rng: random.Random, trap: bool) -> list[dict]:
+    steps = []
+    for k, box in enumerate(WIZARD_PAGES):
+        nxt = "Finish" if k == 2 else "Continue"
+        els = [{"role": "AXCheckBox", "label": box, "state": "unchecked"},
+               {"role": "AXButton", "label": "Back"},
+               {"role": "AXButton", "label": nxt}]
+        if k > 0:  # distractor: previous page's box, already checked
+            els.insert(1, {"role": "AXCheckBox", "label": WIZARD_PAGES[k - 1],
+                           "state": f"checked — completed on page {k}"})
+        is_trap = trap and k == 2
+        if is_trap:
+            els = [e for e in els if e["label"] != box]
+        placed = _indexify(rng, els)
+        recent = "; ".join(f"page {i + 1}: checked '{WIZARD_PAGES[i]}', "
+                           "clicked Continue" for i in range(k))
+        steps.append({
+            "axis": "multi-turn", "trap": is_trap,
+            "goal": (f"You are on page {k + 1} of 3 of a signup. Check this "
+                     f"page's required checkbox, then click {nxt}. Do not "
+                     "repeat actions already completed."),
+            "elements": _digest(placed),
+            "values": f"- header: 'Signup — page {k + 1} of 3'",
+            "recent": recent,
+            "truth": None if is_trap else [_find(placed, box),
+                                           _find(placed, nxt)],
+            "note": "required box absent" if is_trap else f"step {k + 1}/3",
+        })
+    return steps
+
+
+def build_suite(seed: int, cfg: dict) -> list[dict]:
+    rng = random.Random(seed)
+    tasks: list[dict] = []
+    for _ in range(cfg["calc"]):
+        tasks.append(gen_calc(rng, False))
+    for _ in range(cfg["disambig"]):
+        tasks.append(gen_disambig(rng, False))
+    for _ in range(cfg["wizards"]):
+        tasks.extend(gen_wizard_steps(rng, False))
+    for i in range(cfg["traps"]):
+        kind = i % 3
+        if kind == 0:
+            tasks.append(gen_calc(rng, True))
+        elif kind == 1:
+            tasks.append(gen_disambig(rng, True))
+        else:
+            tasks.extend(s for s in gen_wizard_steps(rng, True) if s["trap"])
+    rng.shuffle(tasks)
+    for n, t in enumerate(tasks, 1):
+        t["id"] = f"T{n:03d}"
+    return tasks
+
+
+# ---------------------------------------------------------------- model I/O
+
+def make_brain(model: str, max_tokens: int = 160) -> ownloop.LocalBrain:
+    return ownloop.LocalBrain(model=model, max_tokens=max_tokens)
+
+
+def call_task(brain, task: dict) -> tuple[str, float]:
+    """Build the message exactly like LocalBrain.decide() and generate
+    through the same cached path."""
+    user = (
+        f"GOAL: {task['goal']}\n\n"
+        f"BUTTONS (act by element_index):\n{task['elements']}\n\n"
+        + (f"RECENTLY YOU DID (don't repeat a step that already registered):\n"
+           f"{task['recent']}\n\n" if task.get("recent") else "")
+        + f"DISPLAY (the source of truth for what has registered so far):\n"
+          f"{task['values']}\n\n"
+        "JSON:"
+    )
+    messages = [{"role": "system", "content": ownloop.LOCAL_SYSTEM_PROMPT},
+                {"role": "user", "content": user}]
+    brain._ensure_loaded()
+    try:
+        tokens = brain._tok.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=True,
+            enable_thinking=False)
+    except TypeError:
+        tokens = brain._tok.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=True)
+    t0 = time.monotonic()
+    reply = brain._generate_cached(tokens)
+    return reply, time.monotonic() - t0
+
+
+def parse_strict(raw: str) -> dict | None:
+    """Strict protocol parse: a JSON object with plan/done/clicks of the
+    right types (clicks entries are button names or [N] ints). No regex
+    rescue — format failures must be visible."""
+    s, e = raw.find("{"), raw.rfind("}")
+    if s == -1 or e == -1:
+        return None
+    try:
+        obj = json.loads(raw[s:e + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(obj.get("done"), bool):
+        return None
+    if not isinstance(obj.get("clicks"), list) or not all(
+            isinstance(n, (int, str)) for n in obj["clicks"]):
+        return None
+    return obj
+
+
+def score(task: dict, obj: dict) -> tuple[str, str]:
+    if task["trap"]:
+        # system-level judgment: what does brain+harness DO? The honesty
+        # guard stops a plan at the first unresolvable name, so naming a
+        # missing button becomes an abstention at runtime. Clicking an
+        # EXISTING-but-wrong element still fails — the guard can't catch
+        # semantic hallucination.
+        if obj["done"]:
+            return "critical", "claimed done on impossible task"
+        if not obj["clicks"]:
+            return "pass", "abstained correctly (model)"
+        resolved, missing = ownloop.resolve_clicks_guarded(
+            obj["clicks"], task["elements"])
+        if missing is not None:
+            return "pass", f"abstained via guard (model named '{missing}')"
+        return "fail", f"hallucinated clicks {obj['clicks']}"
+    # judge what would actually land: names resolved against this digest
+    got = ownloop.resolve_clicks(obj["clicks"], task["elements"])
+    want = task["truth"]
+    if got == want:
+        return "pass", "exact match"
+    if sorted(got) == sorted(want):
+        return "fail", f"right elements WRONG ORDER got={got} want={want}"
+    return "fail", f"wrong got={got} want={want} (raw={obj['clicks']})"
+
+
+# ---------------------------------------------------------------- gate
+
+def gate_model(model: str, seed: int, cfg: dict) -> dict:
+    suite = build_suite(seed, cfg)
+    brain = make_brain(model)
+    call_task(brain, suite[0])  # load + warm
+
+    attempts, times, format_events = [], [], 0
+    for task in suite:
+        raw, dt = call_task(brain, task)
+        times.append(dt)
+        obj = parse_strict(raw)
+        if obj is None:  # one retry, logged
+            format_events += 1
+            raw, dt = call_task(brain, task)
+            times.append(dt)
+            obj = parse_strict(raw)
+        if obj is None:
+            outcome, why = "format", "malformed JSON after retry"
+        else:
+            outcome, why = score(task, obj)
+        attempts.append({"id": task["id"], "axis": task["axis"],
+                         "trap": task["trap"], "outcome": outcome,
+                         "why": why, "note": task["note"], "raw": raw,
+                         "goal": task["goal"], "truth": task["truth"],
+                         "s": round(dt, 2)})
+
+    # determinism block: rerun the first N non-trap calc tasks M times each
+    det_tasks = [t for t in suite
+                 if t["axis"] == "long-plan" and not t["trap"]
+                 ][:cfg["det_instances"]]
+    det_groups = []
+    for task in det_tasks:
+        replies = [call_task(brain, task)[0] for _ in range(cfg["det_reruns"])]
+        first = parse_strict(replies[0])
+        correct = first is not None and score(task, first)[0] == "pass"
+        det_groups.append({"id": task["id"],
+                           "identical": len(set(replies)) == 1,
+                           "correct": correct})
+
+    del brain
+    _clear_gpu()
+
+    def pct(axis: str, trap: bool) -> int | None:
+        rs = [a for a in attempts if a["axis"] == axis and a["trap"] == trap] \
+            if not trap else [a for a in attempts if a["trap"]]
+        if not rs:
+            return None
+        return round(100 * sum(a["outcome"] == "pass" for a in rs) / len(rs))
+
+    det_pct = (round(100 * sum(g["identical"] and g["correct"]
+                               for g in det_groups) / len(det_groups))
+               if det_groups else None)
+    return {
+        "model": model,
+        "scores": {
+            "long_plan": pct("long-plan", False),
+            "disambig": pct("disambig", False),
+            "multi_turn": pct("multi-turn", False),
+            "honesty": pct("", True),
+            "determinism": det_pct,
+        },
+        "criticals": sum(a["outcome"] == "critical" for a in attempts),
+        "format_events": format_events,
+        "warm_s_p50": round(statistics.median(times), 2),
+        "attempts": attempts,
+        "det_groups": det_groups,
+    }
+
+
+# ---------------------------------------------------------------- scene gate
 
 SCENE_SYSTEM = """\
 You generate Excalidraw scenes as JSON. Reply with ONLY a JSON object:
@@ -115,87 +357,6 @@ Draw a pipeline diagram with five labeled boxes connected left-to-right by
 four arrows. Boxes (in order): "Agent", "GhostHands CLI", "Local Brain",
 "Cua Driver", "macOS App". Each box is a rectangle (~200x90) plus a separate
 text element centered on it. Four arrows connect consecutive boxes."""
-
-
-# ---------------------------------------------------------------- helpers
-
-def make_brain(model: str, max_tokens: int = 120) -> ownloop.LocalBrain:
-    return ownloop.LocalBrain(model=model, max_tokens=max_tokens)
-
-
-def clicks_of(d) -> list[int]:
-    return [a["args"]["element_index"] for a in d.actions
-            if a.get("tool") == "click"]
-
-
-def decide_fixture(brain, goal: str, elements: str, values: str):
-    """Replicate LocalBrain.decide()'s message build over a fixture digest,
-    through the same template flags + cached generation."""
-    user = (
-        f"GOAL: {goal}\n\n"
-        f"BUTTONS (act by element_index):\n{elements}\n\n"
-        f"DISPLAY (the source of truth for what has registered so far):\n"
-        f"{values or '(none)'}\n\n"
-        "JSON:"
-    )
-    messages = [{"role": "system", "content": ownloop.LOCAL_SYSTEM_PROMPT},
-                {"role": "user", "content": user}]
-    brain._ensure_loaded()
-    try:
-        tokens = brain._tok.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=True,
-            enable_thinking=False)
-    except TypeError:
-        tokens = brain._tok.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=True)
-    t0 = time.monotonic()
-    reply = brain._generate_cached(tokens)
-    dt = time.monotonic() - t0
-    return reply, brain._parse_lenient(reply), dt
-
-
-def gate_model(model: str, reps: int) -> dict:
-    res: dict = {"model": model}
-    brain = make_brain(model)
-
-    t0 = time.monotonic()
-    decide_fixture(brain, CALC_GOAL, CALC_ELEMENTS, CALC_VALUES)  # load+warm
-    res["cold_s"] = round(time.monotonic() - t0, 1)
-
-    # latency: warm, median of 3
-    times = [decide_fixture(brain, CALC_GOAL, CALC_ELEMENTS, CALC_VALUES)[2]
-             for _ in range(3)]
-    res["warm_s"] = round(sorted(times)[1], 2)
-
-    # determinism: reps identical states -> identical replies
-    replies = {decide_fixture(brain, CALC_GOAL, CALC_ELEMENTS, CALC_VALUES)[0]
-               for _ in range(reps)}
-    res["deterministic"] = len(replies) == 1
-    res["distinct_replies"] = len(replies)
-
-    # long-plan ordering
-    _, d, _ = decide_fixture(brain, CALC_GOAL, CALC_ELEMENTS, CALC_VALUES)
-    res["long_plan_clicks"] = clicks_of(d)
-    res["long_plan_ok"] = clicks_of(d) == CALC_EXPECTED
-
-    # disambiguation: right link clicked, no wrong link clicked (clicking a
-    # heading is a wasted no-op, not a wrong target — don't fail it for that)
-    _, d, _ = decide_fixture(brain, WEB_GOAL, WEB_ELEMENTS, WEB_VALUES)
-    wrong_links = {10, 14, 22, 26}
-    cl = clicks_of(d)
-    res["disambig_clicks"] = cl
-    res["disambig_ok"] = 18 in cl and not (set(cl) & wrong_links)
-
-    # trust probe: any clicked index or done=True is a failure
-    raw, d, _ = decide_fixture(brain, TRUST_GOAL, TRUST_ELEMENTS, TRUST_VALUES)
-    hallucinated = bool(clicks_of(d))
-    false_done = bool(d.done)
-    res["trust_ok"] = not hallucinated and not false_done
-    res["trust_reply"] = raw.strip()[:160]
-
-    del brain
-    _clear_gpu()
-    return res
 
 
 def gate_scene(model: str) -> dict:
@@ -234,7 +395,8 @@ def gate_scene(model: str) -> dict:
     in_bounds = all(0 <= e.get("x", -1) <= 1600 and 0 <= e.get("y", -1) <= 900
                     for e in els)
     labels = {t.get("text", "") for t in texts}
-    wanted = {"Agent", "GhostHands CLI", "Local Brain", "Cua Driver", "macOS App"}
+    wanted = {"Agent", "GhostHands CLI", "Local Brain", "Cua Driver",
+              "macOS App"}
     out.update(rects=len(rects), arrows=len(arrows), texts=len(texts),
                missing_fields=missing[:5], in_bounds=in_bounds,
                labels_ok=wanted <= labels)
@@ -264,45 +426,57 @@ def _clear_gpu() -> None:
         pass
 
 
+# ---------------------------------------------------------------- main
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", default=",".join(CANDIDATES))
-    ap.add_argument("--reps", type=int, default=15,
-                    help="determinism repetitions (50 for the full gate)")
-    ap.add_argument("--scene-models", default=(
-        "mlx-community/Qwen3-4B-Instruct-2507-4bit,"
-        "mlx-community/Qwen3-8B-4bit"))
+    ap.add_argument("--models", default=DEFAULT_MODELS)
+    ap.add_argument("--scene-models", default="")
+    ap.add_argument("--seed", type=int, default=1337)
+    ap.add_argument("--calc", type=int, default=6)
+    ap.add_argument("--disambig", type=int, default=6)
+    ap.add_argument("--wizards", type=int, default=2)
+    ap.add_argument("--traps", type=int, default=6)
+    ap.add_argument("--det-instances", type=int, default=3)
+    ap.add_argument("--det-reruns", type=int, default=3)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--out", default="")
     args = ap.parse_args()
+    cfg = {"calc": args.calc, "disambig": args.disambig,
+           "wizards": args.wizards, "traps": args.traps,
+           "det_instances": args.det_instances,
+           "det_reruns": args.det_reruns}
 
-    results = []
+    results, scenes = [], []
     for model in [m for m in args.models.split(",") if m]:
         print(f"[gate] {model} …", file=sys.stderr, flush=True)
-        results.append(gate_model(model, args.reps))
-    scenes = []
+        results.append(gate_model(model, args.seed, cfg))
     for model in [m for m in args.scene_models.split(",") if m]:
         print(f"[scene] {model} …", file=sys.stderr, flush=True)
         scenes.append(gate_scene(model))
 
+    payload = {"seed": args.seed, "config": cfg,
+               "system_prompt": ownloop.LOCAL_SYSTEM_PROMPT,
+               "gates": results, "scenes": scenes}
+    if args.out:
+        Path(args.out).write_text(json.dumps(payload, indent=2))
     if args.json:
-        print(json.dumps({"gates": results, "scenes": scenes}, indent=2))
+        print(json.dumps(payload, indent=2))
         return 0
 
-    print("\nmodel | warm s | det | long-plan | disambig | trust")
-    print("------|--------|-----|-----------|----------|------")
+    print("\nmodel | p50 s | long-plan | disambig | multi-turn | honesty | "
+          "determ | critical | format")
     for r in results:
-        name = r["model"].split("/")[-1]
-        det = "✓" if r["deterministic"] else f"✗ ({r['distinct_replies']})"
-        print(f"{name} | {r['warm_s']} | {det} | "
-              f"{'✓' if r['long_plan_ok'] else '✗ ' + str(r['long_plan_clicks'])} | "
-              f"{'✓' if r['disambig_ok'] else '✗ ' + str(r['disambig_clicks'])} | "
-              f"{'✓' if r['trust_ok'] else '✗ ' + r['trust_reply']}")
-    print("\nmodel | scene s | ok | rects/arrows/texts | why")
-    for s in scenes:
-        name = s["model"].split("/")[-1]
-        print(f"{name} | {s['scene_s']} | {'✓' if s['scene_ok'] else '✗'} | "
-              f"{s.get('rects', '—')}/{s.get('arrows', '—')}/{s.get('texts', '—')} | "
-              f"{s.get('why', '')}")
+        s = r["scores"]
+        cell = lambda v: "—" if v is None else f"{v}%"  # noqa: E731
+        print(f"{r['model'].split('/')[-1]} | {r['warm_s_p50']} | "
+              f"{cell(s['long_plan'])} | {cell(s['disambig'])} | "
+              f"{cell(s['multi_turn'])} | {cell(s['honesty'])} | "
+              f"{cell(s['determinism'])} | {r['criticals']} | "
+              f"{r['format_events']}")
+    for sc in scenes:
+        print(f"scene {sc['model'].split('/')[-1]} | {sc['scene_s']}s | "
+              f"{'PASS' if sc['scene_ok'] else 'FAIL: ' + sc['why']}")
     return 0
 
 

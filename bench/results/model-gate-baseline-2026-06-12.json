@@ -1,0 +1,425 @@
+{
+  "seed": 1337,
+  "config": {
+    "calc": 6,
+    "disambig": 6,
+    "wizards": 2,
+    "traps": 6,
+    "det_instances": 3,
+    "det_reruns": 3
+  },
+  "system_prompt": "You operate a macOS app by clicking buttons to reach the GOAL.\n\nEach turn you are given:\n- DISPLAY: the app's current on-screen value(s). This is the SOURCE OF TRUTH.\n- BUTTONS: a numbered list; act by the [N] element_index.\n\nPLAN AHEAD: \"clicks\" is the FULL ordered click sequence you can determine from\nthe CURRENT screen to reach the goal \u2014 usually several clicks, not one. After\nthey run you'll see the new screen and can finish or continue.\n\nReply with ONLY this JSON object, nothing else:\n{\"plan\": \"<one short sentence>\", \"done\": <bool>, \"clicks\": [<N>, <N>, ...]}\n\nRules:\n- Pick each [N] by matching the button's name in THIS turn's list; never invent\n  or copy an index. Indices change every turn.\n- Set done=true with empty clicks ONLY when the DISPLAY already shows the final\n  goal state. Never claim done for clicks whose effect you have not seen.\n\nFor \"compute A op B\" (op is + - \u00d7 \u00f7) from a cleared display, the full sequence\nis: the digits of A, then the operator op, then the digits of B, then \"=\".\nExample \"compute 7 \u00d7 6\": click 7, then \u00d7, then 6, then = (four clicks). The\nanswer appears only after \"=\". Use ONLY the digits in the GOAL.\n",
+  "gates": [
+    {
+      "model": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "scores": {
+        "long_plan": 0,
+        "disambig": 67,
+        "multi_turn": 100,
+        "honesty": 0,
+        "determinism": 0
+      },
+      "criticals": 0,
+      "format_events": 1,
+      "warm_s_p50": 1.55,
+      "attempts": [
+        {
+          "id": "T001",
+          "axis": "long-plan",
+          "trap": false,
+          "outcome": "fail",
+          "why": "wrong got=[7, 41, 54, 22, 43, 51, 54, 24, 51] want=[7, 41, 54, 24, 7, 51, 54, 24, 51]",
+          "note": "9-click chain",
+          "raw": "{\"plan\": \"Enter 90, then \u00d7, then 79, then =, then \u00d7, then 7, then =\", \"done\": false, \"clicks\": [7, 41, 54, 22, 43, 51, 54, 24, 51]}",
+          "goal": "Compute (90 \u00d7 79) \u00d7 7 on this immediate-execution calculator. Click: the digits of the first number, then \u00d7, then the digits of the second number, then =, then \u00d7, then 7, then = again.",
+          "truth": [
+            7,
+            41,
+            54,
+            24,
+            7,
+            51,
+            54,
+            24,
+            51
+          ],
+          "s": 2.25
+        },
+        {
+          "id": "T002",
+          "axis": "multi-turn",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "step 2/3",
+          "raw": "{\"plan\": \"check the subscription checkbox, then click Continue\", \"done\": false, \"clicks\": [41, 7]}",
+          "goal": "You are on page 2 of 3 of a signup. Check this page's required checkbox, then click Continue. Do not repeat actions already completed.",
+          "truth": [
+            41,
+            7
+          ],
+          "s": 1.41
+        },
+        {
+          "id": "T003",
+          "axis": "multi-turn",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "step 3/3",
+          "raw": "{\"plan\": \"Check the confirmation checkbox, then click Finish\", \"done\": false, \"clicks\": [52, 1]}",
+          "goal": "You are on page 3 of 3 of a signup. Check this page's required checkbox, then click Finish. Do not repeat actions already completed.",
+          "truth": [
+            52,
+            1
+          ],
+          "s": 1.52
+        },
+        {
+          "id": "T004",
+          "axis": "multi-turn",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "step 1/3",
+          "raw": "{\"plan\": \"Check the agreement checkbox, then click Continue\", \"done\": false, \"clicks\": [38, 59]}",
+          "goal": "You are on page 1 of 3 of a signup. Check this page's required checkbox, then click Continue. Do not repeat actions already completed.",
+          "truth": [
+            38,
+            59
+          ],
+          "s": 1.36
+        },
+        {
+          "id": "T005",
+          "axis": "disambig",
+          "trap": true,
+          "outcome": "fail",
+          "why": "hallucinated clicks [11]",
+          "note": "no product matches",
+          "raw": "{\"plan\": \"Click the link for the product that helps encrypt backups\", \"done\": false, \"clicks\": [11]}",
+          "goal": "Open the 'Learn more' page for the product that helps you encrypt your backups.",
+          "truth": null,
+          "s": 1.46
+        },
+        {
+          "id": "T006",
+          "axis": "disambig",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "target Quillback Docs",
+          "raw": "{\"plan\": \"Click the link for Quillback Docs to access the 'Learn more' page for team documentation drafting.\", \"done\": false, \"clicks\": [5]}",
+          "goal": "Open the 'Learn more' page for the product that helps you draft team documentation.",
+          "truth": [
+            5
+          ],
+          "s": 1.66
+        },
+        {
+          "id": "T007",
+          "axis": "multi-turn",
+          "trap": true,
+          "outcome": "fail",
+          "why": "hallucinated clicks [48, 12]",
+          "note": "required box absent",
+          "raw": "{\"plan\": \"Check the required checkbox, then click Finish\", \"done\": false, \"clicks\": [48, 12]}",
+          "goal": "You are on page 3 of 3 of a signup. Check this page's required checkbox, then click Finish. Do not repeat actions already completed.",
+          "truth": null,
+          "s": 1.36
+        },
+        {
+          "id": "T008",
+          "axis": "multi-turn",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "step 3/3",
+          "raw": "{\"plan\": \"Check the confirmation checkbox, then click Finish\", \"done\": false, \"clicks\": [46, 24]}",
+          "goal": "You are on page 3 of 3 of a signup. Check this page's required checkbox, then click Finish. Do not repeat actions already completed.",
+          "truth": [
+            46,
+            24
+          ],
+          "s": 1.35
+        },
+        {
+          "id": "T009",
+          "axis": "disambig",
+          "trap": false,
+          "outcome": "fail",
+          "why": "wrong got=[5, 8] want=[8]",
+          "note": "target LedgerKit",
+          "raw": "{\"plan\": \"Click the product link for invoice automation to open 'Learn more' page\", \"done\": false, \"clicks\": [5, 8]}",
+          "goal": "Open the 'Learn more' page for the product that helps you automate invoices and billing.",
+          "truth": [
+            8
+          ],
+          "s": 1.69
+        },
+        {
+          "id": "T010",
+          "axis": "disambig",
+          "trap": false,
+          "outcome": "fail",
+          "why": "wrong got=[17, 19] want=[19]",
+          "note": "target PixelProof",
+          "raw": "{\"plan\": \"Click the link for PixelProof to access the 'Learn more' page for design mockup review.\", \"done\": false, \"clicks\": [17, 19]}",
+          "goal": "Open the 'Learn more' page for the product that helps you review design mockups.",
+          "truth": [
+            19
+          ],
+          "s": 1.86
+        },
+        {
+          "id": "T011",
+          "axis": "long-plan",
+          "trap": false,
+          "outcome": "fail",
+          "why": "wrong got=[10, 33, 50, 46, 18, 14, 23, 18] want=[44, 23, 33, 50, 22, 18, 14, 23, 18]",
+          "note": "9-click chain",
+          "raw": "{\"plan\": \"Enter 25, then \u2212, then 96, then =, then +, then 5, then =\", \"done\": false, \"clicks\": [10, 33, 50, 46, 18, 14, 23, 18]}",
+          "goal": "Compute (25 \u2212 96) + 5 on this immediate-execution calculator. Click: the digits of the first number, then \u2212, then the digits of the second number, then =, then +, then 5, then = again.",
+          "truth": [
+            44,
+            23,
+            33,
+            50,
+            22,
+            18,
+            14,
+            23,
+            18
+          ],
+          "s": 2.84
+        },
+        {
+          "id": "T012",
+          "axis": "multi-turn",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "step 1/3",
+          "raw": "{\"plan\": \"Check the agreement checkbox, then continue\", \"done\": false, \"clicks\": [2, 34]}",
+          "goal": "You are on page 1 of 3 of a signup. Check this page's required checkbox, then click Continue. Do not repeat actions already completed.",
+          "truth": [
+            2,
+            34
+          ],
+          "s": 1.24
+        },
+        {
+          "id": "T013",
+          "axis": "long-plan",
+          "trap": false,
+          "outcome": "fail",
+          "why": "wrong got=[37, 38, 42, 34, 37, 38, 42, 35, 23, 36, 35] want=[37, 60, 34, 37, 60, 35, 23, 36, 35]",
+          "note": "9-click chain",
+          "raw": "{\"plan\": \"Enter 78, then \u00d7, then 78, then =, then +, then 4, then =\", \"done\": false, \"clicks\": [37, 38, 42, 34, 37, 38, 42, 35, 23, 36, 35]}",
+          "goal": "Compute (78 \u00d7 78) + 4 on this immediate-execution calculator. Click: the digits of the first number, then \u00d7, then the digits of the second number, then =, then +, then 4, then = again.",
+          "truth": [
+            37,
+            60,
+            34,
+            37,
+            60,
+            35,
+            23,
+            36,
+            35
+          ],
+          "s": 3.2
+        },
+        {
+          "id": "T014",
+          "axis": "disambig",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "target Hearthstone HR",
+          "raw": "{\"plan\": \"Click the link for the product that helps manage employee onboarding\", \"done\": false, \"clicks\": [18]}",
+          "goal": "Open the 'Learn more' page for the product that helps you manage employee onboarding.",
+          "truth": [
+            18
+          ],
+          "s": 1.53
+        },
+        {
+          "id": "T015",
+          "axis": "long-plan",
+          "trap": false,
+          "outcome": "fail",
+          "why": "wrong got=[2, 2, 44, 44, 58, 50, 41, 58] want=[2, 2, 44, 13, 13, 58, 50, 41, 58]",
+          "note": "9-click chain",
+          "raw": "{\"plan\": \"Click the digits of 88, then \u00d7, then 44, then =, then +, then 5, then =\", \"done\": false, \"clicks\": [2, 2, 44, 44, 58, 50, 41, 58]}",
+          "goal": "Compute (88 \u00d7 44) + 5 on this immediate-execution calculator. Click: the digits of the first number, then \u00d7, then the digits of the second number, then =, then +, then 5, then = again.",
+          "truth": [
+            2,
+            2,
+            44,
+            13,
+            13,
+            58,
+            50,
+            41,
+            58
+          ],
+          "s": 3.0
+        },
+        {
+          "id": "T016",
+          "axis": "long-plan",
+          "trap": false,
+          "outcome": "fail",
+          "why": "wrong got=[44, 44, 25, 30, 17, 17, 13, 53, 44, 13] want=[44, 44, 25, 17, 30, 13, 53, 44, 13]",
+          "note": "9-click chain",
+          "raw": "{\"plan\": \"Enter 88, then \u2212, then 16, then =, then \u00d7, then 8, then =\", \"done\": false, \"clicks\": [44, 44, 25, 30, 17, 17, 13, 53, 44, 13]}",
+          "goal": "Compute (88 \u2212 16) \u00d7 8 on this immediate-execution calculator. Click: the digits of the first number, then \u2212, then the digits of the second number, then =, then \u00d7, then 8, then = again.",
+          "truth": [
+            44,
+            44,
+            25,
+            17,
+            30,
+            13,
+            53,
+            44,
+            13
+          ],
+          "s": 3.21
+        },
+        {
+          "id": "T017",
+          "axis": "disambig",
+          "trap": true,
+          "outcome": "fail",
+          "why": "hallucinated clicks [18]",
+          "note": "no product matches",
+          "raw": "{\"plan\": \"Click the link for the product that helps encrypt backups\", \"done\": false, \"clicks\": [18]}",
+          "goal": "Open the 'Learn more' page for the product that helps you encrypt your backups.",
+          "truth": null,
+          "s": 1.46
+        },
+        {
+          "id": "T018",
+          "axis": "multi-turn",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "step 2/3",
+          "raw": "{\"plan\": \"Check the subscription checkbox, then click Continue\", \"done\": false, \"clicks\": [58, 2]}",
+          "goal": "You are on page 2 of 3 of a signup. Check this page's required checkbox, then click Continue. Do not repeat actions already completed.",
+          "truth": [
+            58,
+            2
+          ],
+          "s": 1.45
+        },
+        {
+          "id": "T019",
+          "axis": "long-plan",
+          "trap": true,
+          "outcome": "format",
+          "why": "malformed JSON after retry",
+          "note": "'\u2212' button absent",
+          "raw": "{\"plan\": \"Enter 22, then \u00d7, then 36, then =, then \u2212, then 4, then =\", \"done\": false, \"clicks\": [17, 47, 2, 16, 36, 48, 49, 43, 46, 45, 49, 34, 48, 49, 43, 46, 45, 49, 43, 46, 45, 49, 43, 46, 45, 49, 43, 46, 45, 49, 43",
+          "goal": "Compute (22 \u00d7 36) \u2212 4 on this immediate-execution calculator. Click: the digits of the first number, then \u00d7, then the digits of the second number, then =, then \u2212, then 4, then = again.",
+          "truth": null,
+          "s": 4.91
+        },
+        {
+          "id": "T020",
+          "axis": "long-plan",
+          "trap": true,
+          "outcome": "fail",
+          "why": "hallucinated clicks [36, 38, 10, 40, 30, 24, 50, 51, 7]",
+          "note": "'\u00d7' button absent",
+          "raw": "{\"plan\": \"Click the digits of 69, then \u00d7, then 21, then =, then \u00d7, then 7, then =\", \"done\": false, \"clicks\": [36, 38, 10, 40, 30, 24, 50, 51, 7]}",
+          "goal": "Compute (69 \u00d7 21) \u00d7 7 on this immediate-execution calculator. Click: the digits of the first number, then \u00d7, then the digits of the second number, then =, then \u00d7, then 7, then = again.",
+          "truth": null,
+          "s": 3.13
+        },
+        {
+          "id": "T021",
+          "axis": "multi-turn",
+          "trap": true,
+          "outcome": "fail",
+          "why": "hallucinated clicks [37]",
+          "note": "required box absent",
+          "raw": "{\"plan\": \"Check the required checkbox, then click Finish\", \"done\": false, \"clicks\": [37]}",
+          "goal": "You are on page 3 of 3 of a signup. Check this page's required checkbox, then click Finish. Do not repeat actions already completed.",
+          "truth": null,
+          "s": 1.29
+        },
+        {
+          "id": "T022",
+          "axis": "disambig",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "target Hearthstone HR",
+          "raw": "{\"plan\": \"Click the link for employee onboarding product\", \"done\": false, \"clicks\": [14]}",
+          "goal": "Open the 'Learn more' page for the product that helps you manage employee onboarding.",
+          "truth": [
+            14
+          ],
+          "s": 1.34
+        },
+        {
+          "id": "T023",
+          "axis": "long-plan",
+          "trap": false,
+          "outcome": "fail",
+          "why": "wrong got=[26, 41, 60, 29, 35, 50, 49, 40, 50] want=[26, 41, 60, 26, 29, 50, 49, 40, 50]",
+          "note": "9-click chain",
+          "raw": "{\"plan\": \"Enter 80, \u00d7, 87, =, \u2212, 5, =\", \"done\": false, \"clicks\": [26, 41, 60, 29, 35, 50, 49, 40, 50]}",
+          "goal": "Compute (80 \u00d7 87) \u2212 5 on this immediate-execution calculator. Click: the digits of the first number, then \u00d7, then the digits of the second number, then =, then \u2212, then 5, then = again.",
+          "truth": [
+            26,
+            41,
+            60,
+            26,
+            29,
+            50,
+            49,
+            40,
+            50
+          ],
+          "s": 2.75
+        },
+        {
+          "id": "T024",
+          "axis": "disambig",
+          "trap": false,
+          "outcome": "pass",
+          "why": "exact match",
+          "note": "target Atlas CRM",
+          "raw": "{\"plan\": \"Click the 'Learn more' link for Atlas CRM to open the product page.\", \"done\": false, \"clicks\": [3]}",
+          "goal": "Open the 'Learn more' page for the product that helps you sync your sales contacts.",
+          "truth": [
+            3
+          ],
+          "s": 1.55
+        }
+      ],
+      "det_groups": [
+        {
+          "id": "T001",
+          "identical": true,
+          "correct": false
+        },
+        {
+          "id": "T011",
+          "identical": true,
+          "correct": false
+        },
+        {
+          "id": "T013",
+          "identical": true,
+          "correct": false
+        }
+      ]
+    }
+  ],
+  "scenes": []
+}

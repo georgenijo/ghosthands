@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -170,14 +171,24 @@ def _any_browser_title(fragment: str) -> bool:
     return False
 
 
+def _quit_safari() -> None:
+    """Polite quit, hard kill on hang. A beachballing Safari otherwise times
+    out every subsequent task's setup and poisons the whole bench run."""
+    try:
+        subprocess.run(
+            ["osascript", "-e", 'tell application "Safari" to quit'],
+            capture_output=True, timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        subprocess.run(["pkill", "-9", "-x", "Safari"], capture_output=True)
+        time.sleep(1)
+
+
 def _web_setup() -> None:
     # Clear any prior "Example Domains" window across the browsers contenders
     # use, so the done-detector isn't pre-satisfied. Touches only idle Safari
     # and the contenders' OWN ephemeral browsers — never the user's daily Brave.
-    subprocess.run(
-        ["osascript", "-e", 'tell application "Safari" to quit'],
-        capture_output=True, timeout=15,
-    )
+    _quit_safari()
     subprocess.run(["agent-browser", "close", "--all"],
                    capture_output=True, timeout=20)
     # chrome-devtools-mcp Chrome dies with the claude subprocess (--isolated).
@@ -303,4 +314,140 @@ HA_TOGGLE = Task(
 )
 
 
-ALL_TASKS = {t.name: t for t in (CALC, WEB, HA_TOGGLE)}
+# --- v2 fixture tasks: local site we control (browser) ----------------------
+
+# Pages served by bench/fixture/server.py on localhost. Done-detectors read
+# the server's EVENT LOG — the task passes only when the terminal request
+# actually arrived (e.g. /submit?plan=pro&addon=backups). Local fixtures keep
+# scores comparable across months and machines: real sites redesign, A/B-test
+# and geo-vary; these pages change only when we change them.
+
+FIXTURE_PORT = 8773
+FIXTURE_URL = f"http://127.0.0.1:{FIXTURE_PORT}"
+
+
+def _fixture_get(path: str) -> bytes:
+    return urllib.request.urlopen(f"{FIXTURE_URL}{path}", timeout=5).read()
+
+
+def _fixture_events() -> list[dict]:
+    try:
+        return json.loads(_fixture_get("/events"))
+    except (urllib.error.URLError, json.JSONDecodeError, OSError):
+        return []
+
+
+def _fixture_setup() -> None:
+    # 1. ensure the fixture server is up (spawn detached if not)
+    try:
+        _fixture_get("/events")
+    except (urllib.error.URLError, OSError):
+        server = Path(__file__).resolve().parent.parent.parent / "bench" / "fixture" / "server.py"
+        subprocess.Popen([sys.executable, str(server)],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        for _ in range(20):
+            time.sleep(0.25)
+            try:
+                _fixture_get("/events")
+                break
+            except (urllib.error.URLError, OSError):
+                continue
+        else:
+            raise RuntimeError("fixture server did not come up on "
+                               f"{FIXTURE_URL}")
+    # 2. clear the event log so no detector is pre-satisfied
+    _fixture_get("/reset")
+    # 3. close stale browser windows from earlier runs (same contract as
+    #    _web_setup: idle Safari + the contenders' own browsers only)
+    _quit_safari()
+    subprocess.run(["agent-browser", "close", "--all"],
+                   capture_output=True, timeout=20)
+    time.sleep(2)
+
+
+def _event_hit(path: str, query: dict | None = None) -> bool:
+    for e in _fixture_events():
+        if e.get("path") == path and (query is None or e.get("query") == query):
+            return True
+    return False
+
+
+WIZARD = Task(
+    name="v2-wizard",
+    nature="browser",
+    goal=(
+        f"In Safari (bundle id {SAFARI_BUNDLE}), open "
+        f"{FIXTURE_URL}/wizard1.html and complete the signup: choose the Pro "
+        "plan, add the Backups add-on, then confirm. Done when the "
+        "confirmation page says 'Recorded: submit'."
+    ),
+    setup=_fixture_setup,
+    done_check=lambda: _event_hit("/submit",
+                                  {"plan": "pro", "addon": "backups"}),
+    bundle_id=SAFARI_BUNDLE,
+    url=f"{FIXTURE_URL}/wizard1.html",
+    window_title="Signup",
+    simple_goal=(
+        "A 3-step signup is open at Step 1. Complete it: choose the Pro plan, "
+        "then add the Backups add-on, then click 'Confirm signup'. Done when "
+        "the page title says 'Done: submit'."
+    ),
+    dom_goal=(
+        f"Open {FIXTURE_URL}/wizard1.html and complete the signup: choose the "
+        "Pro plan, add the Backups add-on, confirm. Done when the page says "
+        "'Recorded: submit'."
+    ),
+)
+
+DISAMBIG = Task(
+    name="v2-disambig",
+    nature="browser",
+    goal=(
+        f"In Safari (bundle id {SAFARI_BUNDLE}), open "
+        f"{FIXTURE_URL}/pricing.html and open the 'Learn more' link in the "
+        "Business section (and only that one). Done when the page says "
+        "'Recorded: learn business'."
+    ),
+    setup=_fixture_setup,
+    done_check=lambda: _event_hit("/learn/business"),
+    bundle_id=SAFARI_BUNDLE,
+    url=f"{FIXTURE_URL}/pricing.html",
+    window_title="Pricing",
+    simple_goal=(
+        "A pricing page is open with five sections, each with its own 'Learn "
+        "more' link. Click the 'Learn more' link in the Business section — "
+        "only that one. Done when the page title says 'Done: learn business'."
+    ),
+    dom_goal=(
+        f"Open {FIXTURE_URL}/pricing.html and click the 'Learn more' link in "
+        "the Business section only. Done when the page says 'Recorded: learn "
+        "business'."
+    ),
+)
+
+DEEPNAV = Task(
+    name="v2-deepnav",
+    nature="browser",
+    goal=(
+        f"In Safari (bundle id {SAFARI_BUNDLE}), open "
+        f"{FIXTURE_URL}/settings.html, go to Display settings and enable dark "
+        "mode. Done when the page says 'Recorded: set dark'."
+    ),
+    setup=_fixture_setup,
+    done_check=lambda: _event_hit("/set/dark"),
+    bundle_id=SAFARI_BUNDLE,
+    url=f"{FIXTURE_URL}/settings.html",
+    window_title="Settings",
+    simple_goal=(
+        "A settings page is open. Navigate to Display settings and click "
+        "'Enable dark mode'. Done when the page title says 'Done: set dark'."
+    ),
+    dom_goal=(
+        f"Open {FIXTURE_URL}/settings.html, go to Display and enable dark "
+        "mode. Done when the page says 'Recorded: set dark'."
+    ),
+)
+
+
+ALL_TASKS = {t.name: t for t in (CALC, WEB, HA_TOGGLE, WIZARD, DISAMBIG, DEEPNAV)}

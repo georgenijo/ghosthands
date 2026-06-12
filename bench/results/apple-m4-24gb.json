@@ -391,51 +391,6 @@
       "error": null
     },
     {
-      "contender": "local",
-      "task": "calc-7x6",
-      "success": true,
-      "seconds": 13.6,
-      "steps": 5,
-      "cost": "$0",
-      "error": null
-    },
-    {
-      "contender": "local",
-      "task": "calc-7x6",
-      "success": true,
-      "seconds": 11.3,
-      "steps": 5,
-      "cost": "$0",
-      "error": null
-    },
-    {
-      "contender": "local",
-      "task": "calc-7x6",
-      "success": true,
-      "seconds": 10.7,
-      "steps": 5,
-      "cost": "$0",
-      "error": null
-    },
-    {
-      "contender": "local",
-      "task": "calc-7x6",
-      "success": true,
-      "seconds": 10.6,
-      "steps": 5,
-      "cost": "$0",
-      "error": null
-    },
-    {
-      "contender": "local",
-      "task": "calc-7x6",
-      "success": true,
-      "seconds": 13.3,
-      "steps": 5,
-      "cost": "$0",
-      "error": null
-    },
-    {
       "contender": "claude-browser",
       "task": "web-example-iana",
       "success": true,
@@ -490,33 +445,6 @@
       "error": null
     },
     {
-      "contender": "local",
-      "task": "web-example-iana",
-      "success": true,
-      "seconds": 18.7,
-      "steps": 1,
-      "cost": "$0",
-      "error": null
-    },
-    {
-      "contender": "local",
-      "task": "web-example-iana",
-      "success": true,
-      "seconds": 13.2,
-      "steps": 1,
-      "cost": "$0",
-      "error": null
-    },
-    {
-      "contender": "local",
-      "task": "web-example-iana",
-      "success": true,
-      "seconds": 12.8,
-      "steps": 1,
-      "cost": "$0",
-      "error": null
-    },
-    {
       "contender": "local-7b",
       "task": "web-example-iana",
       "success": true,
@@ -540,6 +468,141 @@
       "success": true,
       "seconds": 13.2,
       "steps": 2,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "calc-7x6",
+      "success": true,
+      "seconds": 12.2,
+      "steps": 6,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "calc-7x6",
+      "success": true,
+      "seconds": 8.1,
+      "steps": 6,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "calc-7x6",
+      "success": true,
+      "seconds": 8.1,
+      "steps": 6,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "web-example-iana",
+      "success": true,
+      "seconds": 16.7,
+      "steps": 1,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "web-example-iana",
+      "success": true,
+      "seconds": 12.1,
+      "steps": 1,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "web-example-iana",
+      "success": true,
+      "seconds": 11.2,
+      "steps": 1,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "v2-disambig",
+      "success": true,
+      "seconds": 8.4,
+      "steps": 1,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "v2-disambig",
+      "success": true,
+      "seconds": 8.2,
+      "steps": 1,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "v2-disambig",
+      "success": true,
+      "seconds": 8.2,
+      "steps": 1,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "v2-wizard",
+      "success": false,
+      "seconds": null,
+      "steps": 10,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "v2-wizard",
+      "success": false,
+      "seconds": null,
+      "steps": 10,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "v2-wizard",
+      "success": false,
+      "seconds": null,
+      "steps": 3,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "v2-deepnav",
+      "success": false,
+      "seconds": null,
+      "steps": 1,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "v2-deepnav",
+      "success": true,
+      "seconds": 16.4,
+      "steps": 2,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local",
+      "task": "v2-deepnav",
+      "success": false,
+      "seconds": null,
+      "steps": 1,
       "cost": "$0",
       "error": null
     }

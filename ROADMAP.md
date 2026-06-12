@@ -133,3 +133,47 @@ all ~20s. Full per-device data: `bench/RESULTS.md`.
   from `flows/`, tiered local→Claude escalation, Electron `AXManualAccessibility`
   auto-enable. The stale `local × ha-toggle` rows moved to `local-7b` (HA test
   entity currently 404 — task needs re-setup before it can run again).
+
+## M11 — Reliability pass (discriminative benchmark → protocol + routing)
+- [x] **Model gate v2** (`bench/model_gate.py`): seeded parametric benchmark on
+  the REAL decide() pipeline — long ordered plans, disambiguation among
+  identical labels, teacher-forced wizard steps, honesty traps stamped from
+  the same templates (clicking = fail, false done = critical), determinism
+  (N×M identical-and-correct), one-shot scene-JSON (value-checked). Same
+  `--seed` ⇒ byte-identical suite. The old calc-7×6 saturated at 100% for
+  every model and hid all of this.
+- [x] **Six-model bake-off** (both research fleets' picks, measured): every
+  model failed long plans on the index protocol; only Qwen3-8B declined
+  impossible goals and produced a valid labeled scene. Gemma-3-4B fastest but
+  guesses on impossible goals; Granite-4.0-Micro (the fleet's "honesty pick")
+  hallucinated worst. Verdict: keep Qwen3-4B-2507 as planner, route canvas/
+  honesty-critical work to Qwen3-8B.
+- [x] **Clicks-by-NAME protocol**: the brain answers with button names, the
+  harness resolves them against the live digest (`resolve_clicks_guarded`).
+  Gate, same seed, same model: long plans 0%→83%, disambig 67%→100%,
+  determinism 0%→100%, p50 1.55→1.35s. Symbol aliases ("×"→"Multiply") bridge
+  fixture symbols vs real AX names.
+- [x] **Honesty guard**: a plan naming a button that isn't on screen is
+  refused ("cannot: X is not on screen") instead of acted on — trap pass rate
+  0%→33% at system level; semantic traps (existing-but-wrong element) remain
+  a 4B model ceiling.
+- [x] **Navigation cut + load-wait**: a link/Continue click drops the rest of
+  the batch (those indices belong to a dead page) and the loop waits for the
+  tree to change before settling. Window-twin subtrees trimmed at the second
+  AXWindow root (the old text-dedup hid 4 of 5 'Learn more' links — found
+  only because the fixture bench failed while the paper gate passed).
+- [x] **Two-model routing**: `ghosthands scene "<description>"`
+  (`src/ghosthands/scene.py`, Qwen3-8B) emits a validated Excalidraw scene /
+  clipboard payload for the CANVAS.md recipes. Verified live: 5 boxes, 4
+  arrows, labels exact.
+- [x] **Fixture benchmark (tier 1)**: `bench/fixture/` local site + event-log
+  done-detectors; tasks `v2-wizard` / `v2-disambig` / `v2-deepnav` wired into
+  `run_bench.py`. Local fixtures = reproducible scores (real sites redesign,
+  A/B-test, geo-vary).
+- **E2E results (n=3, world-checked, $0):** calc **11.3→8.1s**, web 12.1s,
+  v2-disambig **0%→100% @ 8.2s** — all 100%. Still open (deliberately
+  unsaturated): `v2-wizard` 0% and `v2-deepnav` 33% — multi-page state is the
+  4B's real frontier; the failure modes (done claimed after first click,
+  page-load races) are logged for the next pass. Honesty beyond the guard and
+  scene-JSON for the 4B remain model ceilings — candidates for the tiered
+  local→8B escalation backlog item.

@@ -190,25 +190,39 @@ You operate a macOS app by clicking buttons to reach the GOAL.
 
 Each turn you are given:
 - DISPLAY: the app's current on-screen value(s). This is the SOURCE OF TRUTH.
-- BUTTONS: a numbered list; act by the [N] element_index.
+- BUTTONS: the clickable elements, listed as [N] role 'name'.
 
 PLAN AHEAD: "clicks" is the FULL ordered click sequence you can determine from
 the CURRENT screen to reach the goal — usually several clicks, not one. After
 they run you'll see the new screen and can finish or continue.
 
 Reply with ONLY this JSON object, nothing else:
-{"plan": "<one short sentence>", "done": <bool>, "clicks": [<N>, <N>, ...]}
+{"plan": "<one short sentence>", "done": <bool>, "clicks": ["<name>", ...]}
 
 Rules:
-- Pick each [N] by matching the button's name in THIS turn's list; never invent
-  or copy an index. Indices change every turn.
-- Set done=true with empty clicks ONLY when the DISPLAY already shows the final
-  goal state. Never claim done for clicks whose effect you have not seen.
+- Each click is a button's exact 'name' from THIS turn's list — the quoted
+  name only, e.g. "7" or "Save". If several buttons share the same name, use
+  that button's [N] number instead (a bare number, e.g. 18).
+- Click only the buttons the GOAL needs — never the text or headings near
+  them.
+- Set done=true with empty clicks ONLY when the DISPLAY already shows the
+  final goal state. Never claim done for clicks whose effect you have not
+  seen.
+- If a button the GOAL needs is not in the list, the goal cannot be done on
+  this screen. Reply {"plan": "cannot: <the missing button> is not on
+  screen", "done": false, "clicks": []}. NEVER substitute a similar button.
 
-For "compute A op B" (op is + - × ÷) from a cleared display, the full sequence
-is: the digits of A, then the operator op, then the digits of B, then "=".
-Example "compute 7 × 6": click 7, then ×, then 6, then = (four clicks). The
-answer appears only after "=". Use ONLY the digits in the GOAL.
+Arithmetic on a calculator: "compute A op B" from a cleared display = the
+digits of A, then op, then the digits of B, then "=". Chained
+"(A op1 B) op2 C" = digits of A, op1, digits of B, "=", op2, digits of C,
+"=" again. Multi-digit numbers are clicked one digit at a time in reading
+order: 47 = "4" then "7".
+Example "compute 7 × 6":
+{"plan": "7 times 6", "done": false, "clicks": ["7", "×", "6", "="]}
+
+FIRST check every button your plan needs is in THIS turn's list. Example:
+the goal needs "÷" but no '÷' is listed:
+{"plan": "cannot: ÷ is not on screen", "done": false, "clicks": []}
 """
 
 
@@ -216,6 +230,88 @@ answer appears only after "=". Use ONLY the digits in the GOAL.
 # and a backgrounded app's menu items are disabled no-ops anyway (SKILL.md §6).
 # Drop them so the brain sees only in-window controls.
 _MENU_ROLES = {"AXMenuBar", "AXMenuBarItem", "AXMenu", "AXMenuItem"}
+
+
+_DIGEST_LINE = re.compile(r"\[(\d+)\] \S+ '([^']*)'")
+
+# Symbol -> spoken-name aliases. Real macOS apps name AX buttons with words
+# ("Multiply", "Equals") while goals and small models speak symbols ("×",
+# "="). Tried only when the literal name has no match, and only if the alias
+# resolves uniquely — so a page that really has a "×" button still wins.
+_NAME_ALIASES: dict[str, list[str]] = {
+    "×": ["Multiply"], "*": ["Multiply", "×"],
+    "÷": ["Divide"], "/": ["Divide", "÷"],
+    "+": ["Add", "Plus"],
+    "−": ["Subtract", "Minus", "-"], "-": ["Subtract", "Minus", "−"],
+    "=": ["Equals"],
+    ".": ["Point", "Decimal"],
+    "AC": ["All Clear", "Clear"], "C": ["Clear", "All Clear"],
+    "Clear": ["All Clear"],
+    "±": ["Change Sign", "Negate"],
+    "%": ["Percent"],
+}
+
+
+def resolve_clicks(clicks: list, elements: str) -> list[int]:
+    """resolve_clicks_guarded without the honesty guard: every resolvable
+    click, unresolvable ones silently dropped. Kept for callers that want
+    pure resolution (scoring, tests)."""
+    out, _ = resolve_clicks_guarded(clicks, elements, guard=False)
+    return out
+
+
+def resolve_clicks_guarded(clicks: list, elements: str, *,
+                           guard: bool = True) -> tuple[list[int], str | None]:
+    """Map the brain's click list (button names and/or [N] indices) onto the
+    element indices of THIS turn's digest. Names beat indices for a small
+    model — it already knows the symbols from the GOAL and doesn't have to
+    carry a 60-entry lookup table through a 10-step plan.
+
+    Honesty guard (guard=True): the first name that doesn't resolve STOPS the
+    plan — clicks after a step that can't land are wrong by construction, and
+    blindly skipping a step is how an agent lies its way into a wrong final
+    state. Returns (resolved_prefix, missing_name) so the caller can report
+    "cannot: X is not on screen" instead of acting. Ambiguous names (2+
+    matches) stop the plan the same way."""
+    by_name: dict[str, list[int]] = {}
+    valid: set[int] = set()
+    for m in _DIGEST_LINE.finditer(elements):
+        idx, name = int(m.group(1)), m.group(2)
+        by_name.setdefault(name, []).append(idx)
+        valid.add(idx)
+    out: list[int] = []
+    for c in clicks:
+        if isinstance(c, bool):
+            continue
+        if isinstance(c, int):
+            if c in valid:
+                out.append(c)
+            elif guard:
+                return out, f"[{c}]"
+            continue
+        if isinstance(c, str):
+            c = c.strip()
+            hits = by_name.get(c, [])
+            if len(hits) == 1:  # name wins — calculator digits ARE names
+                out.append(hits[0])
+                continue
+            if not hits and c.lstrip("-").isdigit():
+                n = int(c)      # no button by that name: treat as [N] index
+                if n in valid:
+                    out.append(n)
+                    continue
+            if not hits:        # symbol -> spoken-name alias ("×"→"Multiply")
+                for alias in _NAME_ALIASES.get(c, []):
+                    ahits = by_name.get(alias, [])
+                    if len(ahits) == 1:
+                        out.append(ahits[0])
+                        hits = ahits
+                        break
+                if hits:
+                    continue
+            if guard:
+                return out, c
+    return out, None
 
 
 def actionable_digest(state_markdown: str, *, max_elements: int = 80) -> tuple[str, str]:
@@ -226,13 +322,25 @@ def actionable_digest(state_markdown: str, *, max_elements: int = 80) -> tuple[s
     els = ax.parse_tree(state_markdown)
     seen: set[tuple] = set()
     lines: list[str] = []
+    windows = 0
     for el in els:
+        if el.role == "AXWindow":
+            windows += 1
+            if windows > 1:
+                # everything after a second window root is the duplicate
+                # window-twin subtree the daemon sometimes appends — its
+                # indices go stale instantly and clicking them misfires
+                break
         if el.index is None or el.role in _MENU_ROLES:
             continue
-        key = (el.role, el.text, el.ax_id)
-        if key in seen:
-            continue  # collapse duplicate-subtree twins; lowest index wins
-        seen.add(key)
+        # Collapse id-pinned duplicates only. Same-named elements WITHOUT ids
+        # are normal UI (five 'Learn more' links on one page) and must all
+        # stay visible or disambiguation is impossible.
+        if el.ax_id:
+            key = (el.role, el.text, el.ax_id)
+            if key in seen:
+                continue
+            seen.add(key)
         name = el.text or el.ax_id or el.role
         idtag = f" id={el.ax_id}" if el.ax_id else ""
         lines.append(f"[{el.index}] {el.role} {name!r}{idtag}")
@@ -309,7 +417,7 @@ class LocalBrain(Brain):
                 messages, add_generation_prompt=True, tokenize=True,
             )
         reply = self._generate_cached(tokens)
-        return self._parse_lenient(reply)
+        return self._parse_lenient(reply, elements)
 
     def _generate_cached(self, tokens: list[int]) -> str:
         """Generate with a KV prompt cache reused across decide() calls: only
@@ -362,27 +470,40 @@ class LocalBrain(Brain):
         return "".join(out)
 
     @staticmethod
-    def _parse_lenient(reply: str) -> Decision:
-        """Parse the compact clicks protocol: {"plan", "done", "clicks": [N…]}.
-        Strict JSON first, then a regex fallback for the clicks array; a
-        totally unparseable reply becomes a safe no-op so the loop re-decides
-        next turn."""
+    def _parse_lenient(reply: str, elements: str = "") -> Decision:
+        """Parse the clicks-by-NAME protocol: {"plan", "done",
+        "clicks": ["name"… | N…]}. Names resolve against this turn's digest
+        via resolve_clicks (missing/ambiguous names drop to safe no-ops);
+        bare integers still work. A totally unparseable reply becomes a safe
+        no-op so the loop re-decides next turn."""
         start, end = reply.find("{"), reply.rfind("}")
         if start != -1 and end != -1:
             try:
                 data = json.loads(reply[start:end + 1])
-                clicks = [int(n) for n in data.get("clicks", []) if isinstance(n, (int, str))]
+                raw = data.get("clicks", [])
+                clicks, missing = resolve_clicks_guarded(
+                    raw if isinstance(raw, list) else [], elements)
+                reason = str(data.get("plan") or data.get("reason") or "")
+                done = bool(data.get("done"))
+                if missing is not None:
+                    # honesty guard: the plan needs a button this screen does
+                    # not have — stop at it and say so instead of acting.
+                    clicks = []
+                    done = False
+                    reason = f"cannot: '{missing}' is not on screen ({reason})"
                 return Decision(
-                    done=bool(data.get("done")),
-                    reason=str(data.get("plan") or data.get("reason") or ""),
+                    done=done,
+                    reason=reason,
                     actions=[{"tool": "click", "args": {"element_index": n}} for n in clicks],
                 )
             except (ValueError, TypeError, json.JSONDecodeError):
                 pass
-        arr = re.search(r'clicks["\']?\s*[:=]\s*\[([\d,\s]*)\]', reply)
+        arr = re.search(r'clicks["\']?\s*[:=]\s*\[([^\]]*)\]', reply)
         done = re.search(r'done["\']?\s*[:=]\s*true', reply, re.IGNORECASE) is not None
         if arr:
-            clicks = [int(n) for n in re.findall(r"\d+", arr.group(1))]
+            raw = re.findall(r'"([^"]+)"|(\d+)', arr.group(1))
+            items: list = [s if s else int(n) for s, n in raw]
+            clicks = resolve_clicks(items, elements)
             return Decision(done=done, reason="parsed (regex)",
                             actions=[{"tool": "click", "args": {"element_index": n}} for n in clicks])
         return Decision(done=done, reason="unparseable reply — re-deciding", actions=[])
@@ -461,6 +582,7 @@ def run_loop(brain: Brain, goal: str, bundle_id: str, *, max_turns: int = MAX_TU
         # failure is a partial sequence — the next turn re-decides on the
         # fresh snapshot either way.
         acted = False
+        navigated = False
         pending: list[tuple[str, dict, driver.PendingCall]] = []
         for action in decision.actions:
             tool = action.get("tool", "")
@@ -471,16 +593,46 @@ def run_loop(brain: Brain, goal: str, bundle_id: str, *, max_turns: int = MAX_TU
             args = {**raw_args, "pid": app.pid, "window_id": app.window_id}
             if pending:
                 time.sleep(ACTION_GAP_SECONDS)
+            el = None
+            if "element_index" in raw_args:
+                el = next((e for e in snap.elements
+                           if e.index == raw_args["element_index"]), None)
             pending.append((tool, raw_args, driver.fire(tool, args)))
             acted = True
             if on_step is not None:
-                el = None
-                if "element_index" in raw_args:
-                    el = next((e for e in snap.elements
-                               if e.index == raw_args["element_index"]), None)
                 on_step(tool, el, raw_args)
+            # Navigation cut: clicking a link (or a page-changing button)
+            # invalidates every index that follows — the rest of the plan
+            # was made for a page that no longer exists. Stop the batch and
+            # let the next turn re-decide on the new screen. (Calculator
+            # digits etc. are plain AXButtons and batch straight through.)
+            if el is not None and (
+                    el.role == "AXLink"
+                    or (el.role == "AXButton" and (el.text or "").split(" ")[0]
+                        in ("Continue", "Finish", "Next", "Submit", "Back",
+                            "Sign", "Log"))):
+                navigated = True
+                if action is not decision.actions[-1]:
+                    log(f"  ⤵ navigation click {el.text!r} — dropping "
+                        f"{len(decision.actions) - len(pending)} stale "
+                        "follow-up clicks, re-deciding on the new page")
+                break
 
         if acted:
+            if navigated:
+                # A page load can look "stable" while the web area is still
+                # empty (chrome-only tree) — wait for the tree to actually
+                # CHANGE from the pre-click page first, then settle. Reading
+                # too early makes an honest brain say "button not on screen"
+                # and a sloppy one click Safari chrome.
+                deadline = time.monotonic() + 3.0
+                while time.monotonic() < deadline:
+                    try:
+                        if app.snapshot().markdown != state:
+                            break
+                    except driver.DriverError:
+                        break
+                    time.sleep(0.25)
             _settle_until_stable(app)
         for tool, raw_args, call in pending:
             err = call.error()

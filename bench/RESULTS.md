@@ -42,8 +42,11 @@ merges by (contender, task), so you can run `calc` and `web` in separate passes.
 | `claude-browser` | Claude · agent-browser CLI (**DOM**) | web-example-iana | 3 | 100% | 18.0 | 3 | $0.36 |
 | `claude-chrome` | Claude · chrome-devtools-mcp (**DOM**) | web-example-iana | 3 | 66% | 35.5 | 6 | $0.43 |
 | `claude-pixel` | Claude · cua **pixel** (screenshot+click) | web-example-iana | 3 | 0% | — | 19 | — |
-| `local` | free local MLX 4B (Qwen3-2507) · cua **AX** | calc-7x6 | 5 | 100% | 11.3 | 5 | $0 |
-| `local` | free local MLX 4B (Qwen3-2507) · cua **AX** | web-example-iana | 3 | 100% | 13.2 | 1 | $0 |
+| `local` | free local MLX 4B (Qwen3-2507) · cua **AX** | calc-7x6 | 3 | 100% | 8.1 | 6 | $0 |
+| `local` | free local MLX 4B (Qwen3-2507) · cua **AX** | v2-deepnav | 3 | 33% | 16.4 | 1 | $0 |
+| `local` | free local MLX 4B (Qwen3-2507) · cua **AX** | v2-disambig | 3 | 100% | 8.2 | 1 | $0 |
+| `local` | free local MLX 4B (Qwen3-2507) · cua **AX** | v2-wizard | 3 | 0% | — | 10 | $0 |
+| `local` | free local MLX 4B (Qwen3-2507) · cua **AX** | web-example-iana | 3 | 100% | 12.1 | 1 | $0 |
 | `local-7b` | free local MLX 7B (Qwen2.5) · cua **AX** | ha-toggle | 5 | 100% | 14.0 | 1 | $0 |
 | `local-7b` | free local MLX 7B (Qwen2.5) · cua **AX** | web-example-iana | 3 | 100% | 18.4 | 2 | $0 |
 | `mai-ui-pixel` | free local vision (MAI-UI-8B) · **pixel** | calc-7x6 | 5 | 0% | — | 10 | $0 |

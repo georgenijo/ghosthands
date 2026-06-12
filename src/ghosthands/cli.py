@@ -11,6 +11,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -69,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
     p_record.add_argument("--model", help="MLX model id for the local brain")
     p_record.add_argument("--max-turns", type=int, default=12)
 
+    p_scene = sub.add_parser("scene", help='generate an Excalidraw scene on the routed model: ghosthands scene "<description>"')
+    p_scene.add_argument("description")
+    p_scene.add_argument("--raw", action="store_true", help="print the raw element array (localStorage recipe) instead of the clipboard payload")
+    p_scene.add_argument("--model", help="MLX model id (default: scene specialist)")
+
     p_bench = sub.add_parser("bench", help="benchmark contenders (passes args through to bench/run_bench.py)")
     p_bench.add_argument("bench_args", nargs=argparse.REMAINDER)
 
@@ -118,6 +124,17 @@ def main(argv: list[str] | None = None) -> int:
         result = brains.run_goal(brain, args.goal, timeout=args.timeout, stream=print)
         print(f"\n[{brain.name}] exit={result.returncode} wall={result.seconds:.1f}s")
         return 0 if result.returncode == 0 else 1
+
+    if args.command == "scene":
+        from . import scene
+        try:
+            elements = scene.generate_scene(args.description, model=args.model)
+        except scene.SceneError as e:
+            print(f"scene generation failed: {e}", file=sys.stderr)
+            return 1
+        print(json.dumps(elements) if args.raw
+              else scene.clipboard_payload(elements))
+        return 0
 
     if args.command == "ownloop":
         from . import ownloop
