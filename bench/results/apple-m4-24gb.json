@@ -9,7 +9,7 @@
     "cua_driver": "0.5.1",
     "python": "3.13",
     "contributor": "George Nijo",
-    "date": "2026-06-11"
+    "date": "2026-06-12"
   },
   "records": [
     {
@@ -247,60 +247,6 @@
       "error": "timeout 300.0s"
     },
     {
-      "contender": "claude-chrome",
-      "task": "web-example-iana",
-      "success": true,
-      "seconds": 22.5,
-      "steps": 5,
-      "cost": "$0.23",
-      "error": null
-    },
-    {
-      "contender": "claude-chrome",
-      "task": "web-example-iana",
-      "success": true,
-      "seconds": 22.1,
-      "steps": 5,
-      "cost": "$0.08",
-      "error": null
-    },
-    {
-      "contender": "claude-chrome",
-      "task": "web-example-iana",
-      "success": true,
-      "seconds": 19.3,
-      "steps": 5,
-      "cost": "$0.08",
-      "error": null
-    },
-    {
-      "contender": "claude-browser",
-      "task": "web-example-iana",
-      "success": true,
-      "seconds": 19.2,
-      "steps": 5,
-      "cost": "$0.11",
-      "error": null
-    },
-    {
-      "contender": "claude-browser",
-      "task": "web-example-iana",
-      "success": true,
-      "seconds": 22.1,
-      "steps": 6,
-      "cost": "$0.07",
-      "error": null
-    },
-    {
-      "contender": "claude-browser",
-      "task": "web-example-iana",
-      "success": true,
-      "seconds": 18.3,
-      "steps": 5,
-      "cost": "$0.06",
-      "error": null
-    },
-    {
       "contender": "claude",
       "task": "web-example-iana",
       "success": true,
@@ -490,10 +436,64 @@
       "error": null
     },
     {
+      "contender": "claude-browser",
+      "task": "web-example-iana",
+      "success": true,
+      "seconds": 17.6,
+      "steps": 3,
+      "cost": "$0.76",
+      "error": null
+    },
+    {
+      "contender": "claude-browser",
+      "task": "web-example-iana",
+      "success": true,
+      "seconds": 18.0,
+      "steps": 3,
+      "cost": "$0.36",
+      "error": null
+    },
+    {
+      "contender": "claude-browser",
+      "task": "web-example-iana",
+      "success": true,
+      "seconds": 24.5,
+      "steps": 4,
+      "cost": "$0.18",
+      "error": null
+    },
+    {
+      "contender": "claude-chrome",
+      "task": "web-example-iana",
+      "success": true,
+      "seconds": 31.3,
+      "steps": 5,
+      "cost": "$1.06",
+      "error": null
+    },
+    {
+      "contender": "claude-chrome",
+      "task": "web-example-iana",
+      "success": false,
+      "seconds": null,
+      "steps": 6,
+      "cost": "$0.43",
+      "error": null
+    },
+    {
+      "contender": "claude-chrome",
+      "task": "web-example-iana",
+      "success": true,
+      "seconds": 39.6,
+      "steps": 6,
+      "cost": "$0.73",
+      "error": null
+    },
+    {
       "contender": "local",
       "task": "web-example-iana",
       "success": true,
-      "seconds": 14.2,
+      "seconds": 18.7,
       "steps": 1,
       "cost": "$0",
       "error": null
@@ -502,7 +502,7 @@
       "contender": "local",
       "task": "web-example-iana",
       "success": true,
-      "seconds": 15.2,
+      "seconds": 13.2,
       "steps": 1,
       "cost": "$0",
       "error": null
@@ -511,26 +511,35 @@
       "contender": "local",
       "task": "web-example-iana",
       "success": true,
-      "seconds": 14.5,
+      "seconds": 12.8,
       "steps": 1,
       "cost": "$0",
       "error": null
     },
     {
-      "contender": "local",
+      "contender": "local-7b",
       "task": "web-example-iana",
       "success": true,
-      "seconds": 13.7,
+      "seconds": 18.4,
       "steps": 1,
       "cost": "$0",
       "error": null
     },
     {
-      "contender": "local",
+      "contender": "local-7b",
       "task": "web-example-iana",
       "success": true,
-      "seconds": 14.8,
-      "steps": 1,
+      "seconds": 26.4,
+      "steps": 3,
+      "cost": "$0",
+      "error": null
+    },
+    {
+      "contender": "local-7b",
+      "task": "web-example-iana",
+      "success": true,
+      "seconds": 13.2,
+      "steps": 2,
       "cost": "$0",
       "error": null
     }
