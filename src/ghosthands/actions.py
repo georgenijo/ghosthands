@@ -22,6 +22,7 @@ Hardening, per DESIGN.md §8:
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -36,6 +37,12 @@ DEFAULT_RETRIES = 2
 SETTLE_SECONDS = 0.25  # let the UI settle between an action and its verify
 WINDOW_POLL_SECONDS = 0.4
 WINDOW_POLL_ATTEMPTS = 10
+# An AX action LANDS within ~250ms and a rejected one ERRORS within ~50ms,
+# but the daemon pads a successful response to ~1.1s (measured, 0.5.1).
+# So fire the action, wait this long, and read the outcome: process exited
+# -> classify its (almost certainly error) result; still running -> the
+# action landed, move on and let `verify`/the next snapshot show the truth.
+ACTION_LATENCY_SECONDS = 0.35
 
 
 class GhostHandsError(RuntimeError):
@@ -199,24 +206,40 @@ class App:
                 )
                 continue
             for el in candidates:
-                try:
-                    driver.call(tool, {
-                        "pid": self.pid,
-                        "window_id": self.window_id,
-                        "element_index": el.index,
-                        **extra,
-                    })
+                outcome = self._fire_and_judge(tool, {
+                    "pid": self.pid,
+                    "window_id": self.window_id,
+                    "element_index": el.index,
+                    **extra,
+                })
+                if outcome is None:
                     self._post_verify(verify)
                     return el
-                except StaleIndexError as e:
-                    last_err = e  # try the duplicate index set
+                if isinstance(outcome, StaleIndexError):
+                    last_err = outcome  # try the duplicate index set
                     continue
-                except TransientDriverError as e:
-                    last_err = e
+                if isinstance(outcome, TransientDriverError):
+                    last_err = outcome
                     if verify is not None and self._landed(verify):
                         return el
                     break  # re-snapshot and retry the whole action
+                raise outcome
         raise last_err if last_err else GhostHandsError(f"{tool} on {target!r} failed")
+
+    @staticmethod
+    def _fire_and_judge(tool: str, args: dict) -> driver.DriverError | None:
+        """Fire an action and judge it after ACTION_LATENCY_SECONDS instead of
+        sitting out the daemon's ~1.1s padded success response. Returns the
+        classified error, or None for success (either a fast success or still
+        in flight past the landing window — i.e. it landed). An in-flight
+        response is reaped by a daemon thread; its truth is whatever the
+        caller's verify/next snapshot reads."""
+        call = driver.fire(tool, args)
+        time.sleep(ACTION_LATENCY_SECONDS)
+        if call.proc.poll() is not None:
+            return call.error()
+        threading.Thread(target=call.proc.wait, daemon=True).start()
+        return None
 
     def _pid_action(self, tool: str, args: dict, *, verify: Predicate | None = None) -> None:
         """Non-element action (keys/text go to the pid). Same transient-retry
@@ -225,14 +248,16 @@ class App:
         for attempt in range(self.retries + 1):
             if attempt:
                 time.sleep(SETTLE_SECONDS)
-            try:
-                driver.call(tool, {"pid": self.pid, "window_id": self.window_id, **args})
+            outcome = self._fire_and_judge(
+                tool, {"pid": self.pid, "window_id": self.window_id, **args})
+            if outcome is None:
                 self._post_verify(verify)
                 return
-            except TransientDriverError as e:
-                last_err = e
-                if verify is not None and self._landed(verify):
-                    return
+            last_err = outcome
+            if not isinstance(outcome, TransientDriverError):
+                raise outcome
+            if verify is not None and self._landed(verify):
+                return
         raise last_err if last_err else GhostHandsError(f"{tool} failed")
 
     def type_text(self, text: str, *, verify: Predicate | None = None) -> None:

@@ -52,10 +52,12 @@ POLL_SECONDS = 2.0
 RESULTS_DIR = REPO / "bench" / "results"
 
 LOCAL_MODELS = {
-    "local": "mlx-community/Qwen2.5-7B-Instruct-4bit",     # the specced 7B
-    "local-14b": "mlx-community/Qwen2.5-14B-Instruct-4bit",  # stronger option
+    "local": "mlx-community/Qwen3-4B-Instruct-2507-4bit",  # current default
+    "local-7b": "mlx-community/Qwen2.5-7B-Instruct-4bit",  # the original spec,
+                                                           # kept for A/B
+    "local-14b": "mlx-community/Qwen2.5-14B-Instruct-4bit",  # bigger option
 }
-INPROC = {"scripted-ax", "local", "local-14b", "mai-ui-pixel"}
+INPROC = {"scripted-ax", "local", "local-7b", "local-14b", "mai-ui-pixel"}
 
 
 def _noop(*_a, **_k):

@@ -31,7 +31,7 @@ from pathlib import Path
 from .driver import DRIVER_BIN
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SKILL_FILES = ("SKILL.md", "WEB_APPS.md")
+SKILL_FILES = ("SKILL.md", "WEB_APPS.md", "CANVAS.md")
 
 TASK_PREAMBLE = (
     "You control macOS through the cua-driver MCP tools (computer use). "

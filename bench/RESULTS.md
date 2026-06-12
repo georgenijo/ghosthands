@@ -30,7 +30,7 @@ merges by (contender, task), so you can run `calc` and `web` in separate passes.
 
 ## Per-device detail
 
-### Apple M4 Mac mini · 24GB
+### Apple M4 · 24GB
 
 `Apple M4` · 24 GB · macOS 27.0 · cua 0.5.1 · by **George Nijo** · 2026-06-11
 
@@ -42,11 +42,11 @@ merges by (contender, task), so you can run `calc` and `web` in separate passes.
 | `claude-browser` | Claude · agent-browser CLI (**DOM**) | web-example-iana | 3 | 100% | 19.2 | 5 | $0.07 |
 | `claude-chrome` | Claude · chrome-devtools-mcp (**DOM**) | web-example-iana | 3 | 100% | 22.1 | 5 | $0.08 |
 | `claude-pixel` | Claude · cua **pixel** (screenshot+click) | web-example-iana | 3 | 0% | — | 19 | — |
-| `local` | free local MLX 7B · cua **AX** | calc-7x6 | 5 | 100% | 20.4 | 5 | $0 |
-| `local` | free local MLX 7B · cua **AX** | ha-toggle | 5 | 100% | 14.0 | 1 | $0 |
-| `local` | free local MLX 7B · cua **AX** | web-example-iana | 3 | 100% | 16.3 | 1 | $0 |
+| `local` | free local MLX 4B (Qwen3-2507) · cua **AX** | calc-7x6 | 5 | 100% | 11.3 | 5 | $0 |
+| `local` | free local MLX 4B (Qwen3-2507) · cua **AX** | web-example-iana | 5 | 100% | 14.5 | 1 | $0 |
+| `local-7b` | free local MLX 7B (Qwen2.5) · cua **AX** | ha-toggle | 5 | 100% | 14.0 | 1 | $0 |
 | `mai-ui-pixel` | free local vision (MAI-UI-8B) · **pixel** | calc-7x6 | 5 | 0% | — | 10 | $0 |
 | `mai-ui-pixel` | free local vision (MAI-UI-8B) · **pixel** | ha-toggle | 5 | 0% | — | 10 | $0 |
-| `scripted-ax` | no model — scripted cua AX (floor) | calc-7x6 | 5 | 100% | 7.2 | — | $0 |
+| `scripted-ax` | no model — scripted cua AX (floor) | calc-7x6 | 5 | 100% | 4.5 | — | $0 |
 | `scripted-ax` | no model — scripted cua AX (floor) | ha-toggle | 5 | 100% | 4.8 | — | $0 |
-| `scripted-ax` | no model — scripted cua AX (floor) | web-example-iana | 3 | 100% | 8.2 | — | $0 |
+| `scripted-ax` | no model — scripted cua AX (floor) | web-example-iana | 5 | 100% | 8.8 | — | $0 |

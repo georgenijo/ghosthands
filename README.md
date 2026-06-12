@@ -28,7 +28,7 @@ Agents that build UIs need to **test** them. Today that means slow, paid, DOM-on
 
 ## The three ideas
 
-🧠 **Free local brain.** A small MLX text model (default **Qwen2.5-7B-Instruct-4bit**) reads the structured **Accessibility tree** and picks the element to click — *no vision, no API, no tokens*. It drove macOS Calculator to `7 × 6 = 42` and toggled a Home Assistant entity at **100% / $0**, faster than the paid ceiling.
+🧠 **Free local brain.** A small MLX text model (default **Qwen3-4B-Instruct-2507-4bit**) reads the structured **Accessibility tree** and emits the full click plan as compact JSON — *no vision, no API, no tokens*. With a KV prompt cache and JSON early-stop, a warm decision takes **~1.8s**; it drives macOS Calculator to `7 × 6 = 42` at **100% / $0**, ~3.3× faster than the paid ceiling.
 
 👁️ **Vision only when there's no other way.** Canvas/WebGL/game surfaces with no AX tree fall back to a local vision model (MAI-UI-8B) + pixel clicks. It's the *last* resort — the benchmark shows exactly why (below).
 
@@ -41,9 +41,9 @@ Agents that build UIs need to **test** them. Today that means slow, paid, DOM-on
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh)"
 cua-driver permissions grant
 
-# Brain: a local MLX model (Apple Silicon). Pull the default 7B:
+# Brain: a local MLX model (Apple Silicon). Pull the default 4B:
 python -m venv .venv && .venv/bin/pip install mlx-lm mlx-vlm
-.venv/bin/hf download mlx-community/Qwen2.5-7B-Instruct-4bit
+.venv/bin/hf download mlx-community/Qwen3-4B-Instruct-2507-4bit
 
 # Drive a native app with the free local brain, $0:
 .venv/bin/python bin/ghosthands run "Compute 7 times 6" \
@@ -60,19 +60,27 @@ Other commands: `ghosthands doctor` (verify the environment), `ghosthands smoke`
 
 Every brain, identical task, identical hands. Wall-clock starts at dispatch and stops the instant a **world** check passes — a calculator display value read over AX, or the destination page title in any browser — never the agent's own words. Full per-device results and how to add your own Mac: **[bench/RESULTS.md](./bench/RESULTS.md)**.
 
-Measured on an **Apple M4 Mac mini · 24 GB · macOS 27** *(calc n=5, web n=3)*:
+Measured on an **Apple M4 Mac mini · 24 GB · macOS 27** *(local/scripted n=5; claude calc n=5, web n=3)*:
 
 | contender | hands / path | task | success | median | steps | cost\* |
 |-----------|--------------|------|---------|--------|-------|------|
-| `scripted-ax` | no model (floor) | calc 7×6 | 100% | 7.2s | — | $0 |
-| **`local` 7B** | free MLX · **AX** | calc 7×6 | **100%** | 20.4s | 5 | **$0** |
+| `scripted-ax` | no model (floor) | calc 7×6 | 100% | 4.5s | — | $0 |
+| **`local` 4B** | free MLX · **AX** | calc 7×6 | **100%** | **11.3s** | 5 | **$0** |
 | `mai-ui-pixel` | free vision · **pixel** | calc 7×6 | **0%** | — | 10 | $0 |
 | `claude` | Claude · cua **AX** | calc 7×6 | 100% | 37.8s | 9 | $0.24 |
-| **`local` 7B** | free MLX · **AX** | web | **100%** | **16.3s** | 1 | **$0** |
+| **`local` 4B** | free MLX · **AX** | web | **100%** | **14.5s** | 1 | **$0** |
 | `claude-browser` | Claude · agent-browser **DOM** | web | 100% | 19.2s | 5 | $0.07 |
 | `claude-chrome` | Claude · chrome-devtools-mcp **DOM** | web | 100% | 22.1s | 5 | $0.08 |
 | `claude` | Claude · cua **AX** | web | 100% | 23.1s | 6 | $0.11 |
 | `claude-pixel` | Claude · cua **pixel** | web | **0%** | — | 19 | — |
+
+> **2026-06 speed pass** (same machine, same tasks): swapping the 7B for
+> Qwen3-4B-2507 with a compact click protocol, KV prompt cache, and JSON
+> early-stop cut a warm model decision from **13.4s → 1.8s**; firing actions
+> without waiting for the daemon's ~1.1s padded response cut the no-model
+> floor from **7.2s → 4.5s** and the local calc run from **20.4s → 11.3s**.
+> Canvas apps (Excalidraw) now get a scene-JSON injection recipe
+> (`skills/CANVAS.md`) instead of minutes of mouse-drawing.
 
 \* Local/scripted contenders burn zero tokens; the Claude `cost` is the metered `total_cost_usd` Claude Code reports (subscription, not out-of-pocket).
 
@@ -96,6 +104,10 @@ The hands are [**Cua Driver**](https://github.com/trycua/cua) (MIT) exposed over
 - **Match by name, not index** — targets resolve against a fresh snapshot; duplicate-window subtrees are all tried.
 - **Settle until the tree stops changing** before re-reading (a digit press flips a button label a beat before the display updates).
 - **Cursor-less, no focus steal** — apps launch in the background; actions are `AXPress`.
+- **Fire-and-go actions** — an AX action lands in ~250ms but the 0.5.1 daemon
+  pads its success response to ~1.1s; GhostHands dispatches without blocking
+  and reads the truth from the next snapshot (errors return in <50ms and are
+  still caught).
 
 ## Requirements
 

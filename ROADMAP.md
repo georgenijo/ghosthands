@@ -105,3 +105,31 @@ Web cross-path (Apple M4 mini, n=3): **pixel = 0% even with Claude as the brain*
 (the brain was never the bottleneck); the free local 7B on AX is the fastest
 model-driven path at $0. DOM paths (agent-browser, chrome-devtools-mcp) ≈ cua AX,
 all ~20s. Full per-device data: `bench/RESULTS.md`.
+
+## M10 — Speed pass (profile → fix the real bottlenecks)
+- [x] **Profiled the stack**: subprocess-per-call only ~23ms; AX snapshot ~75ms;
+  but every *action* call blocked ~1.13s — the daemon executes in ≤250ms and
+  pads the success response (errors return in <50ms). Model decide() was 13.4s
+  (prefill 2.8s of a 657-token prompt + slow 7B decode).
+- [x] **Fire-and-go actions** (`driver.fire`/`PendingCall`, `App._fire_and_judge`,
+  batched dispatch in `run_loop`): dispatch, wait 0.35s, exited→classify error,
+  running→landed; truth read from the next snapshot. Scripted calc 7.2s → 4.5s.
+- [x] **Model swap + compact protocol**: Qwen2.5-7B → **Qwen3-4B-Instruct-2507**
+  (researched + head-to-head benched; Qwen3.5-4B rejected — non-deterministic
+  plans on identical state). Brain now emits `{"plan","done","clicks":[N…]}` —
+  ~30 generated tokens instead of ~120.
+- [x] **KV prompt cache across turns** (static-first prompt ordering, trim on
+  divergence) + **JSON early-stop** (stop decoding at the closing brace):
+  warm decide 13.4s → **1.8s**.
+- [x] **Canvas contract** (`skills/CANVAS.md`): never mouse-draw geometry —
+  inject Excalidraw scene JSON via `localStorage` (verified live: 3-box diagram
+  in seconds vs 6 min/rectangle), clipboard `excalidraw/clipboard` payload, or
+  the Mermaid dialog as AX-only fallback. Shipped to subscription brains via
+  `SKILL_FILES`.
+- **Result (n=5, world-checked):** local calc **20.4s → 11.3s**, local web
+  **16.3s → 14.5s**, floor **7.2s → 4.5s**, all 100% success, $0.
+- Backlog from research (not yet adopted): persistent Unix-socket client
+  (~20ms/call), AXObserver-gated settle, snapshot diffing, speculative actions
+  from `flows/`, tiered local→Claude escalation, Electron `AXManualAccessibility`
+  auto-enable. The stale `local × ha-toggle` rows moved to `local-7b` (HA test
+  entity currently 404 — task needs re-setup before it can run again).

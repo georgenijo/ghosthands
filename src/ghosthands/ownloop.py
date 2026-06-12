@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 
 from . import ax, driver
 from .actions import App
-from .driver import DriverError, StaleIndexError, TransientDriverError
+from .driver import StaleIndexError, TransientDriverError
 
 MAX_TURNS = 20
 ALLOWED_TOOLS = {"click", "type_text", "press_key", "hotkey", "set_value", "scroll"}
@@ -44,6 +44,11 @@ ALLOWED_TOOLS = {"click", "type_text", "press_key", "hotkey", "set_value", "scro
 # updated yet). The App wrapper settles per-action; this raw loop must too.
 SETTLE_SECONDS = 0.2
 SETTLE_MAX_SECONDS = 1.6  # poll for a changed snapshot up to this long
+# Gap between fired actions in one turn's batch. An AX action lands within
+# ~250ms of dispatch even though the daemon pads its *response* to ~1.1s
+# (measured, cua-driver 0.5.1) — fire-and-go with this gap keeps ordering
+# without paying the padding per action.
+ACTION_GAP_SECONDS = 0.3
 
 SYSTEM_PROMPT = """\
 You drive a macOS app through accessibility (AX) actions. Each turn you get
@@ -187,25 +192,22 @@ Each turn you are given:
 - DISPLAY: the app's current on-screen value(s). This is the SOURCE OF TRUTH.
 - BUTTONS: a numbered list; act by the [N] element_index.
 
-PLAN AHEAD: output the FULL ordered sequence of clicks you can determine from
-the CURRENT screen to reach the goal — usually several actions, not one. After
-they run you'll see the new screen and can finish or continue. First write ONE
-short sentence describing the plan, then output ONLY a JSON object as the LAST
-line, where "actions" is the ordered list:
-{"done": <bool>, "reason": "<sentence>", "actions": [{"tool": "click", "args": {"element_index": <N>}}, ...]}
+PLAN AHEAD: "clicks" is the FULL ordered click sequence you can determine from
+the CURRENT screen to reach the goal — usually several clicks, not one. After
+they run you'll see the new screen and can finish or continue.
+
+Reply with ONLY this JSON object, nothing else:
+{"plan": "<one short sentence>", "done": <bool>, "clicks": [<N>, <N>, ...]}
 
 Rules:
 - Pick each [N] by matching the button's name in THIS turn's list; never invent
-  or copy an index.
-- Click on-screen buttons. Use press_key only for real keys ("return",
-  "escape", "delete") — never for digits/operators (no key named "multiply";
-  click the "×" button).
-- Set done=true with empty actions ONLY when the DISPLAY already shows the final
-  goal state.
+  or copy an index. Indices change every turn.
+- Set done=true with empty clicks ONLY when the DISPLAY already shows the final
+  goal state. Never claim done for clicks whose effect you have not seen.
 
 For "compute A op B" (op is + - × ÷) from a cleared display, the full sequence
 is: the digits of A, then the operator op, then the digits of B, then "=".
-Example "compute 7 × 6": click 7, then ×, then 6, then = (four actions). The
+Example "compute 7 × 6": click 7, then ×, then 6, then = (four clicks). The
 answer appears only after "=". Use ONLY the digits in the GOAL.
 """
 
@@ -258,13 +260,18 @@ class LocalBrain(Brain):
     the import is lazy so the rest of the package stays stdlib-only."""
 
     name = "local"
-    DEFAULT_MODEL = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+    # Qwen3-4B-Instruct-2507 (non-thinking): measured 3.3× faster per decide()
+    # than the originally-specced Qwen2.5-7B on an M4 mini with the compact
+    # clicks protocol, with a *more* correct calc plan (it clears first).
+    DEFAULT_MODEL = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
 
-    def __init__(self, model: str | None = None, *, max_tokens: int = 256):
+    def __init__(self, model: str | None = None, *, max_tokens: int = 120):
         self.model_id = model or self.DEFAULT_MODEL
         self.max_tokens = max_tokens
         self._model = None
         self._tok = None
+        self._cache = None          # mlx KV prompt cache, reused across turns
+        self._cache_tokens: list[int] = []  # tokens the cache currently holds
 
     def _ensure_loaded(self) -> None:
         if self._model is None:
@@ -273,42 +280,111 @@ class LocalBrain(Brain):
 
     def decide(self, goal: str, state: str, history: list[dict]) -> Decision:
         self._ensure_loaded()
-        from mlx_lm import generate
 
         elements, values = actionable_digest(state)
         recent = _recent_actions(history)
+        # Static-first ordering so the KV prompt cache gets the longest common
+        # prefix across turns: system prompt (constant) > GOAL (per run) >
+        # BUTTONS (mostly stable per app) > RECENT/DISPLAY (change every turn).
         user = (
             f"GOAL: {goal}\n\n"
-            f"DISPLAY (read this FIRST to decide the next step):\n"
-            f"{values or '(none)'}\n\n"
+            f"BUTTONS (act by element_index):\n{elements}\n\n"
             + (f"RECENTLY YOU DID (don't repeat a step that already registered):\n{recent}\n\n" if recent else "")
-            + f"BUTTONS (act by element_index):\n{elements}\n\n"
-            "One sentence describing the plan, then the JSON with the full "
-            "ordered list of clicks from the current screen."
+            + f"DISPLAY (the source of truth for what has registered so far):\n"
+              f"{values or '(none)'}\n\n"
+            "JSON:"
         )
-        prompt = self._tok.apply_chat_template(
-            [{"role": "system", "content": LOCAL_SYSTEM_PROMPT},
-             {"role": "user", "content": user}],
-            add_generation_prompt=True, tokenize=False,
-        )
-        reply = generate(self._model, self._tok, prompt=prompt,
-                         max_tokens=self.max_tokens, verbose=False)
+        messages = [{"role": "system", "content": LOCAL_SYSTEM_PROMPT},
+                    {"role": "user", "content": user}]
+        try:
+            # Hybrid-thinking models (Qwen3/3.5 base line) burn the whole token
+            # budget on CoT unless thinking is disabled; templates that don't
+            # know the kwarg ignore it or raise TypeError.
+            tokens = self._tok.apply_chat_template(
+                messages, add_generation_prompt=True, tokenize=True,
+                enable_thinking=False,
+            )
+        except TypeError:
+            tokens = self._tok.apply_chat_template(
+                messages, add_generation_prompt=True, tokenize=True,
+            )
+        reply = self._generate_cached(tokens)
         return self._parse_lenient(reply)
+
+    def _generate_cached(self, tokens: list[int]) -> str:
+        """Generate with a KV prompt cache reused across decide() calls: only
+        the suffix that differs from the previous turn's prompt is prefilled
+        (~330 static system-prompt tokens + the stable BUTTONS list skip
+        re-prefill — measured ~2.8s -> <1s prefill on turn 2+)."""
+        from mlx_lm import stream_generate
+        from mlx_lm.models.cache import make_prompt_cache, trim_prompt_cache
+
+        if self._cache is None:
+            self._cache = make_prompt_cache(self._model)
+            self._cache_tokens = []
+        common = 0
+        for a, b in zip(self._cache_tokens, tokens):
+            if a != b:
+                break
+            common += 1
+        # Never reuse the entire prompt verbatim (the cache must end *before*
+        # the next position to be generated), and trim any diverged suffix.
+        common = min(common, len(tokens) - 1)
+        if common < len(self._cache_tokens):
+            try:
+                trim_prompt_cache(self._cache, len(self._cache_tokens) - common)
+                self._cache_tokens = self._cache_tokens[:common]
+            except Exception:  # noqa: BLE001 - non-trimmable cache: start over
+                self._cache = make_prompt_cache(self._model)
+                self._cache_tokens = []
+                common = 0
+
+        out: list[str] = []
+        gen_tokens: list[int] = []
+        depth = 0
+        opened = False
+        for r in stream_generate(self._model, self._tok, prompt=tokens[common:],
+                                 max_tokens=self.max_tokens,
+                                 prompt_cache=self._cache):
+            out.append(r.text)
+            gen_tokens.append(r.token)
+            # JSON early-stop: end decoding the moment the top-level object
+            # closes — every further token costs ~40-80ms on this hardware.
+            for ch in r.text:
+                if ch == "{":
+                    depth += 1
+                    opened = True
+                elif ch == "}":
+                    depth -= 1
+            if opened and depth <= 0:
+                break
+        self._cache_tokens = list(tokens) + gen_tokens
+        return "".join(out)
 
     @staticmethod
     def _parse_lenient(reply: str) -> Decision:
-        """Local models occasionally emit Python-style dicts or trailing prose.
-        Try strict JSON first, then fall back to regex; a totally unparseable
-        reply becomes a safe no-op so the loop re-decides next turn."""
-        try:
-            return Brain._parse(reply)
-        except (ValueError, json.JSONDecodeError):
-            pass
-        idx = re.search(r'element_index["\']?\s*[:=]\s*(\d+)', reply)
+        """Parse the compact clicks protocol: {"plan", "done", "clicks": [N…]}.
+        Strict JSON first, then a regex fallback for the clicks array; a
+        totally unparseable reply becomes a safe no-op so the loop re-decides
+        next turn."""
+        start, end = reply.find("{"), reply.rfind("}")
+        if start != -1 and end != -1:
+            try:
+                data = json.loads(reply[start:end + 1])
+                clicks = [int(n) for n in data.get("clicks", []) if isinstance(n, (int, str))]
+                return Decision(
+                    done=bool(data.get("done")),
+                    reason=str(data.get("plan") or data.get("reason") or ""),
+                    actions=[{"tool": "click", "args": {"element_index": n}} for n in clicks],
+                )
+            except (ValueError, TypeError, json.JSONDecodeError):
+                pass
+        arr = re.search(r'clicks["\']?\s*[:=]\s*\[([\d,\s]*)\]', reply)
         done = re.search(r'done["\']?\s*[:=]\s*true', reply, re.IGNORECASE) is not None
-        if idx:
-            return Decision(done=False, reason="parsed (regex)",
-                            actions=[{"tool": "click", "args": {"element_index": int(idx.group(1))}}])
+        if arr:
+            clicks = [int(n) for n in re.findall(r"\d+", arr.group(1))]
+            return Decision(done=done, reason="parsed (regex)",
+                            actions=[{"tool": "click", "args": {"element_index": n}} for n in clicks])
         return Decision(done=done, reason="unparseable reply — re-deciding", actions=[])
 
 
@@ -376,7 +452,16 @@ def run_loop(brain: Brain, goal: str, bundle_id: str, *, max_turns: int = MAX_TU
         log(f"[{brain.name}] turn {turn}: done={decision.done} {decision.reason!r} "
             f"({len(decision.actions)} actions)")
 
+        # Fire-and-go: an AX action lands within ~250ms but the daemon pads its
+        # response to ~1.1s — so dispatch each action without blocking, keep
+        # ACTION_GAP_SECONDS between them for ordering, and classify errors
+        # afterwards (during the settle, whose wall-clock we'd pay anyway).
+        # A failed action is a NO-OP (a stale/unknown index errors out rather
+        # than clicking the wrong element), so the worst case of a mid-batch
+        # failure is a partial sequence — the next turn re-decides on the
+        # fresh snapshot either way.
         acted = False
+        pending: list[tuple[str, dict, driver.PendingCall]] = []
         for action in decision.actions:
             tool = action.get("tool", "")
             if tool not in ALLOWED_TOOLS:
@@ -384,30 +469,29 @@ def run_loop(brain: Brain, goal: str, bundle_id: str, *, max_turns: int = MAX_TU
                 continue
             raw_args = action.get("args", {})
             args = {**raw_args, "pid": app.pid, "window_id": app.window_id}
-            try:
-                driver.call(tool, args)
-                acted = True
-                log(f"  ✓ {tool} {raw_args}")
-                if on_step is not None:
-                    el = None
-                    if "element_index" in raw_args:
-                        el = next((e for e in snap.elements
-                                   if e.index == raw_args["element_index"]), None)
-                    on_step(tool, el, raw_args)
-            except StaleIndexError:
-                log(f"  ! stale index on {tool} — turn ends, brain re-decides on fresh state")
-                break
-            except TransientDriverError as e:
-                log(f"  ~ transient on {tool} ({e}); continuing — next snapshot shows truth")
-            except DriverError as e:
-                # A bad action from the brain (unknown key, wrong element) must
-                # not kill the loop — log it and let the next turn re-decide on
-                # a fresh snapshot.
-                log(f"  ! {tool} rejected ({e}); turn ends, brain re-decides")
-                break
+            if pending:
+                time.sleep(ACTION_GAP_SECONDS)
+            pending.append((tool, raw_args, driver.fire(tool, args)))
+            acted = True
+            if on_step is not None:
+                el = None
+                if "element_index" in raw_args:
+                    el = next((e for e in snap.elements
+                               if e.index == raw_args["element_index"]), None)
+                on_step(tool, el, raw_args)
 
         if acted:
             _settle_until_stable(app)
+        for tool, raw_args, call in pending:
+            err = call.error()
+            if err is None:
+                log(f"  ✓ {tool} {raw_args}")
+            elif isinstance(err, StaleIndexError):
+                log(f"  ! stale index on {tool} {raw_args} — brain re-decides on fresh state")
+            elif isinstance(err, TransientDriverError):
+                log(f"  ~ transient on {tool} ({err}); next snapshot shows truth")
+            else:
+                log(f"  ! {tool} {raw_args} rejected ({err}); brain re-decides")
 
         # Conversation history: the state we showed and the brain's reply.
         # Keep only the last 4 turns to bound the prompt.

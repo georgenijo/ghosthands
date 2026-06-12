@@ -24,7 +24,8 @@ SKIP = {"latest.json"}  # per-run scratch, not a device file
 # friendly path description per contender (brain + hands)
 CONTENDERS = {
     "scripted-ax":    "no model — scripted cua AX (floor)",
-    "local":          "free local MLX 7B · cua **AX**",
+    "local":          "free local MLX 4B (Qwen3-2507) · cua **AX**",
+    "local-7b":       "free local MLX 7B (Qwen2.5) · cua **AX**",
     "local-14b":      "free local MLX 14B · cua **AX**",
     "mai-ui-pixel":   "free local vision (MAI-UI-8B) · **pixel**",
     "claude":         "Claude · cua **AX** (computer-use)",

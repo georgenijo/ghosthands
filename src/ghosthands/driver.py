@@ -103,6 +103,63 @@ def call(tool: str, args: dict[str, Any] | None = None, *, timeout: float = DEFA
         return out
 
 
+class PendingCall:
+    """An in-flight action fired with `fire()`. The daemon executes an AX
+    action within ~250ms but pads the client response to ~1.1s (measured on
+    cua-driver 0.5.1); firing without blocking reclaims that padding. Call
+    `collect()` (or `error()`) later to classify any failure."""
+
+    def __init__(self, tool: str, proc: subprocess.Popen):
+        self.tool = tool
+        self.proc = proc
+
+    def collect(self, timeout: float = DEFAULT_TIMEOUT) -> Any:
+        """Block until the call returns; raise the classified DriverError on
+        failure, exactly like `call()`."""
+        try:
+            out, err = self.proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            raise TransientDriverError(self.tool, f"call timed out after {timeout}s")
+        out = (out or "").strip()
+        err = (err or "").strip()
+        if self.proc.returncode != 0:
+            raise classify_error(self.tool, out or err or f"exit code {self.proc.returncode}")
+        if not out:
+            return None
+        try:
+            return json.loads(out)
+        except json.JSONDecodeError:
+            return out
+
+    def error(self, timeout: float = DEFAULT_TIMEOUT) -> DriverError | None:
+        """Like collect() but returns the classified error instead of raising
+        (None on success). For post-hoc batch checks."""
+        try:
+            self.collect(timeout=timeout)
+            return None
+        except DriverError as e:
+            return e
+
+
+def fire(tool: str, args: dict[str, Any] | None = None) -> PendingCall:
+    """Issue one Cua ACTION without waiting for the daemon's padded response.
+    The action itself lands fast; use the returned PendingCall to classify
+    errors after the fact (e.g. during the post-action settle). Use `call()`
+    for query tools — their responses are needed and return quickly anyway."""
+    payload = json.dumps(args or {})
+    try:
+        proc = subprocess.Popen(
+            [DRIVER_BIN, "call", tool, payload],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError:
+        raise DriverError(tool, f"cua-driver binary not found at {DRIVER_BIN}")
+    return PendingCall(tool, proc)
+
+
 def cli(*argv: str, timeout: float = DEFAULT_TIMEOUT) -> tuple[int, str]:
     """Run a non-tool cua-driver subcommand (status, permissions, ...).
     Returns (exit_code, combined_output)."""
