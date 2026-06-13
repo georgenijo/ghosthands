@@ -126,6 +126,44 @@ def test_attribution_hermetic() -> None:
     print("hermetic: attribution + word-boundary + prompt-hint all verified")
 
 
+def test_hub_routed_attribution() -> None:
+    """With the hub in the path the tree is claude -> ghosthands hub ->
+    cua-driver, so the brain is TWO hops above the leaf. probe_agents must climb
+    past the proxy and attribute to claude (with its session/model), not to the
+    python hub process. Also proves the raw 1-hop case and the bare daemon
+    (launchd parent) still resolve correctly in the same pass."""
+    # pid 900 = cua-driver leaf under the hub; 901 = ghosthands hub; 902 = claude
+    # pid 910 = cua-driver leaf wired raw; 911 = claude (direct parent)
+    # pid 920 = bare daemon; 1 = launchd
+    ppid = {900: 901, 901: 902, 902: 5000, 910: 911, 911: 5000, 920: 1}
+    command = {
+        901: "/Users/me/.local/bin/ghosthands hub",
+        902: "/Users/me/.local/bin/claude --session-id hub-sess --model claude-opus-4-8",
+        911: "/Users/me/.local/bin/claude --session-id raw-sess --model claude-opus-4-8",
+        920: "/Users/me/.local/bin/cua-driver serve",
+    }
+    agents = monitor.probe_agents(
+        pgrep_driver=lambda: [900, 910, 920],
+        ppid_of=lambda pid: ppid.get(pid),
+        command_of=lambda pid: command.get(pid),
+        cwd_of=lambda pid: None,
+    )
+    by_pid = {a["pid"]: a for a in agents}
+
+    # Hub-routed leaf attributes to claude two hops up — NOT to the hub.
+    hub_leaf = by_pid[900]
+    assert hub_leaf["agent"] == "claude", f"hub climb failed: {hub_leaf}"
+    assert hub_leaf["parent_pid"] == 902, "should report the brain pid, not the hub"
+    assert hub_leaf["session_id"] == "hub-sess", "session must come from claude, not hub"
+
+    # Raw leaf still works (1 hop).
+    assert by_pid[910]["agent"] == "claude" and by_pid[910]["session_id"] == "raw-sess"
+
+    # Bare daemon (launchd parent) stays agent=None so daemon_up is unaffected.
+    assert by_pid[920]["agent"] is None, by_pid[920]
+    print("hub-routed: brain attributed through the proxy (2 hops); raw + daemon intact")
+
+
 def test_program_match_word_boundary() -> None:
     """_program_of matches on a word boundary, not a raw prefix. Pins the fix
     for the startswith mislabelling directly, including path/suffix variants."""
@@ -236,6 +274,7 @@ def test_live_attribution_if_present() -> None:
 
 def main() -> int:
     test_attribution_hermetic()
+    test_hub_routed_attribution()
     test_program_match_word_boundary()
     test_serve_roundtrip()
     test_bind_in_use_is_clean()
