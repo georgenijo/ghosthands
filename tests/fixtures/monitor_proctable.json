@@ -1,0 +1,36 @@
+{
+  "_comment": "Synthetic process-table snapshot for hermetic monitor tests. Models the raw output of the pgrep/ps/lsof probes that monitor.probe_agents() shells out to, so the attribution logic (program match, --session-id / --model regex, project hint) can be proven with the cua-driver daemon DOWN and NO agents connected. The shapes mirror a real macOS host: every cua-driver process is parented either by launchd (pid 1 -> the daemon, no brain) or by an agent launcher. The 'expect' block is the exact agent dict probe_agents must produce for each pid.",
+
+  "pgrep": [101, 202, 303, 404, 505, 606],
+
+  "ppid": {
+    "101": 1,
+    "202": 2002,
+    "303": 3003,
+    "404": 4004,
+    "505": 5005,
+    "606": 6006
+  },
+
+  "command": {
+    "2002": "/Users/dev/.local/bin/claude --session-id a4059f4e-7744-4f89-b912-5c1dcf310797 --model claude-opus-4-8[1m] --settings {\"x\":1}",
+    "3003": "/opt/homebrew/bin/codex serve --model gpt-5-codex",
+    "4004": "/usr/local/bin/claudette --session-id should-not-match --model nope",
+    "5005": "codexterous run --session-id also-no",
+    "6006": "/Users/dev/.local/bin/claude --session-id 11112222-3333-4444-5555-666677778888 # research the\\012cua-driver internals   and   summarize"
+  },
+
+  "cwd": {
+    "2002": "/Users/dev/Documents/code/ghosthands",
+    "3003": "/Users/dev/src/some-other-repo"
+  },
+
+  "expect": [
+    {"pid": 101, "parent_pid": 1, "agent": null, "session_id": null, "model": null, "project": null},
+    {"pid": 202, "parent_pid": 2002, "agent": "claude", "session_id": "a4059f4e-7744-4f89-b912-5c1dcf310797", "model": "claude-opus-4-8[1m]", "project": "/Users/dev/Documents/code/ghosthands"},
+    {"pid": 303, "parent_pid": 3003, "agent": "codex", "session_id": null, "model": "gpt-5-codex", "project": "/Users/dev/src/some-other-repo"},
+    {"pid": 404, "parent_pid": 4004, "agent": null, "session_id": "should-not-match", "model": "nope", "project": null},
+    {"pid": 505, "parent_pid": 5005, "agent": null, "session_id": "also-no", "model": null, "project": null},
+    {"pid": 606, "parent_pid": 6006, "agent": "claude", "session_id": "11112222-3333-4444-5555-666677778888", "model": null, "project": "research the cua-driver internals and summarize"}
+  ]
+}

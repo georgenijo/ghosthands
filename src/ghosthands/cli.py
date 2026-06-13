@@ -81,6 +81,25 @@ def main(argv: list[str] | None = None) -> int:
     p_bench = sub.add_parser("bench", help="benchmark contenders (passes args through to bench/run_bench.py)")
     p_bench.add_argument("bench_args", nargs=argparse.REMAINDER)
 
+    p_monitor = sub.add_parser("monitor", help="read-only dashboard of who is driving the hands: ghosthands monitor [--port 7878]")
+    p_monitor.add_argument("--port", type=int, default=7878)
+    p_monitor.add_argument("--once", action="store_true", help="print the current state as JSON and exit (no server)")
+
+    p_compact = sub.add_parser("compact", help="compact a fat AX snapshot at the funnel: ghosthands compact <file.json|.md>")
+    p_compact.add_argument("file", help="a get_window_state JSON (with tree_markdown) or a raw AX markdown file")
+    p_compact.add_argument("--max-chars", type=int, default=8000, help="offload the full original to disk above this size")
+    p_compact.add_argument("--stats-only", action="store_true", help="print only the reduction stats, not the compacted text")
+
+    sub.add_parser("hub", help="run the stdio MCP hub (tags + tees every call): register an agent's MCP command as 'ghosthands hub'")
+
+    p_web = sub.add_parser("web", help="DOM tier over Brave's debug port: ghosthands web targets|open ...")
+    web_sub = p_web.add_subparsers(dest="web_command", required=True)
+    p_web_t = web_sub.add_parser("targets", help="list browser tabs by CDP target id (no fronting)")
+    p_web_t.add_argument("--port", type=int, default=9333)
+    p_web_o = web_sub.add_parser("open", help="launch Brave with the debug port open on a URL")
+    p_web_o.add_argument("url")
+    p_web_o.add_argument("--port", type=int, default=9333)
+
     args = parser.parse_args(argv)
 
     if args.command == "doctor":
@@ -197,6 +216,61 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "bench":
         script = Path(__file__).resolve().parent.parent.parent / "bench" / "run_bench.py"
         return subprocess.run([sys.executable, str(script), *args.bench_args]).returncode
+
+    if args.command == "monitor":
+        from . import monitor
+        if args.once:
+            print(json.dumps(monitor.state(), indent=2))
+            return 0
+        print(f"GhostHands monitor — http://localhost:{args.port}  (Ctrl-C to stop)")
+        try:
+            monitor.serve(args.port)
+        except KeyboardInterrupt:
+            pass
+        return 0
+
+    if args.command == "compact":
+        from . import compaction
+        raw = Path(args.file).read_text()
+        markdown = raw
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict) and "tree_markdown" in obj:
+                markdown = obj["tree_markdown"]
+        except (ValueError, json.JSONDecodeError):
+            pass
+        res = compaction.compact(markdown, max_chars=args.max_chars)
+        print(f"# {res['original_chars']} -> {res['compact_chars']} chars "
+              f"({res['reduction_pct']:.1f}% saved)"
+              + (f"  full original: {res['handle']}" if res.get("handle") else ""))
+        if not args.stats_only:
+            print(res["text"])
+        return 0
+
+    if args.command == "hub":
+        from . import hub
+        return hub.main()
+
+    if args.command == "web":
+        from . import webtier
+        if args.web_command == "open":
+            result = webtier.launch_web(args.url, port=args.port)
+            print(f"launched {result.get('name', 'browser')} pid={result.get('pid')} "
+                  f"debug-port={args.port} url={args.url}")
+            return 0
+        if args.web_command == "targets":
+            targets = webtier.list_targets(args.port)
+            if not targets:
+                print(f"no targets on debug port {args.port} "
+                      f"(launch with: ghosthands web open <url> --port {args.port})",
+                      file=sys.stderr)
+                return 1
+            for t in targets:
+                tid = (t.get("id") or "?")[:8]
+                print(f"  {tid}  {t.get('type', ''):<10} "
+                      f"{(t.get('title') or '')[:40]!r}  {t.get('url', '')}")
+            return 0
+        return 2
 
     return 2
 
