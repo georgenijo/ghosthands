@@ -1,0 +1,101 @@
+{
+  "mode": "after",
+  "rows": [
+    {
+      "issue": "#10",
+      "metric": "web(committed): digest chars",
+      "before": 447,
+      "after": 176
+    },
+    {
+      "issue": "#10",
+      "metric": "web(committed): digest lines",
+      "before": 15,
+      "after": 6
+    },
+    {
+      "issue": "#10",
+      "metric": "web(committed): non-actionable lines (chrome/structural)",
+      "before": 6,
+      "after": 0
+    },
+    {
+      "issue": "#10",
+      "metric": "web(live Brave): digest chars",
+      "before": 895,
+      "after": 857
+    },
+    {
+      "issue": "#10",
+      "metric": "web(live Brave): digest lines",
+      "before": 30,
+      "after": 29
+    },
+    {
+      "issue": "#10",
+      "metric": "web(live Brave): non-actionable lines (chrome/structural)",
+      "before": 1,
+      "after": 0
+    },
+    {
+      "issue": "#8",
+      "metric": "shadow button click reaches it",
+      "before": false,
+      "after": true,
+      "world": "before=False after=True"
+    },
+    {
+      "issue": "#8",
+      "metric": "find-by-name sets shadow field",
+      "before": false,
+      "after": true,
+      "world": "before=False after=True"
+    },
+    {
+      "issue": "#8",
+      "metric": "verify catches no-op click (True=lies / False=honest)",
+      "before": true,
+      "after": false,
+      "world": "/set/confirm fired=False (want False)"
+    },
+    {
+      "issue": "#8",
+      "metric": "deep path still clicks light DOM",
+      "before": "(n/a)",
+      "after": true,
+      "world": "after=True"
+    },
+    {
+      "issue": "#9",
+      "metric": "route(Brave bundle) -> tier",
+      "before": "AX (always)",
+      "after": "web"
+    },
+    {
+      "issue": "#9",
+      "metric": "route(calculator bundle) -> tier",
+      "before": "AX (always)",
+      "after": "native"
+    },
+    {
+      "issue": "#9",
+      "metric": "route(AXWebArea snapshot) -> tier",
+      "before": "AX (always)",
+      "after": "web"
+    },
+    {
+      "issue": "#9",
+      "metric": "page controls visible to AX vs DOM tier",
+      "before": "AX: webarea=True ctrls=True",
+      "after": "DOM: ctrls=True",
+      "world": "AX visibility focus-dependent; DOM always reads it"
+    },
+    {
+      "issue": "#9",
+      "metric": "routed web->DOM completes a task",
+      "before": "AX always (no route)",
+      "after": "tier=web, click=True",
+      "world": "/set/shadowclick=True"
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "mode": "baseline",
+  "rows": [
+    {
+      "issue": "#10",
+      "metric": "web(committed): digest chars",
+      "before": 447,
+      "after": "\u2014 pending"
+    },
+    {
+      "issue": "#10",
+      "metric": "web(committed): digest lines",
+      "before": 15,
+      "after": "\u2014 pending"
+    },
+    {
+      "issue": "#10",
+      "metric": "web(committed): non-actionable lines (chrome/structural)",
+      "before": 6,
+      "after": "\u2014 pending"
+    },
+    {
+      "issue": "#10",
+      "metric": "web(live Brave): digest chars",
+      "before": 859,
+      "after": "\u2014 pending"
+    },
+    {
+      "issue": "#10",
+      "metric": "web(live Brave): digest lines",
+      "before": 29,
+      "after": "\u2014 pending"
+    },
+    {
+      "issue": "#10",
+      "metric": "web(live Brave): non-actionable lines (chrome/structural)",
+      "before": 1,
+      "after": "\u2014 pending"
+    },
+    {
+      "issue": "#8",
+      "metric": "shadow button click reaches it",
+      "before": false,
+      "after": false,
+      "world": "before=False after=False"
+    },
+    {
+      "issue": "#8",
+      "metric": "find-by-name sets shadow field",
+      "before": false,
+      "after": "\u2014 pending",
+      "world": "before=False after=\u2014 pending"
+    },
+    {
+      "issue": "#8",
+      "metric": "verify catches no-op click (True=lies / False=honest)",
+      "before": true,
+      "after": "\u2014 pending",
+      "world": "/set/confirm fired=False (want False)"
+    },
+    {
+      "issue": "#8",
+      "metric": "deep path still clicks light DOM",
+      "before": "(n/a)",
+      "after": true,
+      "world": "after=True"
+    },
+    {
+      "issue": "#9",
+      "metric": "route(Brave bundle) -> tier",
+      "before": "AX (always)",
+      "after": "\u2014 pending"
+    },
+    {
+      "issue": "#9",
+      "metric": "route(calculator bundle) -> tier",
+      "before": "AX (always)",
+      "after": "\u2014 pending"
+    },
+    {
+      "issue": "#9",
+      "metric": "route(AXWebArea snapshot) -> tier",
+      "before": "AX (always)",
+      "after": "\u2014 pending"
+    },
+    {
+      "issue": "#9",
+      "metric": "page controls visible to AX vs DOM tier",
+      "before": "AX: webarea=True ctrls=True",
+      "after": "DOM: ctrls=True",
+      "world": "AX blind to page content on a bg window -> route web\u2192DOM"
+    }
+  ]
+}

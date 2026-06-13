@@ -424,11 +424,111 @@ def _run_live() -> None:
     print("LIVE OK: per-tab eval + real DOM click recorded by the fixture")
 
 
+def _run_live_shadow() -> None:
+    """End-to-end for issue #8 against an ISOLATED Brave on the shadow fixture
+    (own --user-data-dir, so the user's working Brave is untouched). Proves the
+    four gaps the field report hit, each world-checked by the fixture's
+    /events log:
+
+      1. deepQuery PIERCES an open shadow root (a plain selector found nothing).
+      2. find-by-accessible-name resolves + sets a shadow field with no stable
+         value-selector.
+      3. verify catches a click that no-ops (a disabled control).
+      4. the deep path still clicks plain light DOM.
+    """
+    import subprocess
+    import time
+    import urllib.request
+
+    profile = "/tmp/gh-isolated-brave-test"
+    port = int(os.environ.get("GH_LIVE_SHADOW_PORT", "9446"))
+    base = "http://127.0.0.1:8773"
+    page = f"{base}/shadow.html"
+    subprocess.run(["pkill", "-f", f"user-data-dir={profile}"], capture_output=True)
+    time.sleep(1.0)
+
+    res = webtier.launch_web(page, port=port, user_data_dir=profile)
+    pid = res.get("pid") if isinstance(res, dict) else None
+    try:
+        target = None
+        for _ in range(60):
+            try:
+                target = webtier.target_for_url(port, "shadow.html")
+                break
+            except webtier.WebTierError:
+                time.sleep(0.5)
+        assert target, "LIVE shadow: tab never appeared on the debug port"
+        ws = target["webSocketDebuggerUrl"]
+        for _ in range(60):
+            if webtier.cdp_eval(ws, "(() => { const p=document.querySelector('gh-panel');"
+                                    " return !!(p&&p.shadowRoot&&p.shadowRoot.getElementById('save')); })()"):
+                break
+            time.sleep(0.5)
+
+        def reset_to_page() -> None:
+            urllib.request.urlopen(f"{base}/reset", timeout=5).read()
+            webtier.cdp_navigate(ws, page)
+            for _ in range(40):
+                if webtier.cdp_eval(ws, "!!(document.querySelector('gh-panel') && "
+                                        "document.querySelector('gh-panel').shadowRoot)"):
+                    return
+                time.sleep(0.25)
+
+        def logged(path: str, query: dict | None = None) -> bool:
+            evs = json.loads(urllib.request.urlopen(f"{base}/events", timeout=5).read())
+            return any(e["path"] == path and (query is None or e["query"] == query)
+                       for e in evs)
+
+        # 1. plain selector can't pierce; deepQuery can -> server logs the click
+        reset_to_page()
+        assert not bool(webtier.cdp_eval(
+            ws, "!!document.querySelector('#save')")), \
+            "control should be hidden from a plain (non-piercing) selector"
+        assert webtier.cdp_click(ws, "#save"), "deep cdp_click did not find #save"
+        time.sleep(1.0)
+        assert logged("/set/shadowclick"), "shadow click not recorded by the world"
+
+        # 2. find-by-accessible-name sets a shadow field -> server logs the value
+        reset_to_page()
+        assert webtier.set_value_by_name(ws, "Project name", "Acme"), \
+            "set_value_by_name did not resolve the aria-labelled shadow field"
+        time.sleep(1.0)
+        assert logged("/set/name", {"value": "Acme"}), \
+            "the shadow field value never reached the world log"
+
+        # 3. verify catches a no-op (disabled button): click 'fires' but the
+        #    world does not change -> verify returns False, /set/confirm absent
+        reset_to_page()
+        ok = webtier.cdp_click(
+            ws, "#confirm",
+            verify="!document.querySelector('gh-panel').shadowRoot"
+                   ".getElementById('confirmed').hidden")
+        assert ok is False, "verify failed to catch the no-op click"
+        time.sleep(0.5)
+        assert not logged("/set/confirm"), "a no-op click reached the world"
+
+        # 4. the deep path still clicks plain light DOM
+        reset_to_page()
+        assert webtier.cdp_click(ws, "#light-link"), "deep path missed light DOM"
+        time.sleep(1.0)
+        assert logged("/set/lightclick"), "light-DOM click not recorded"
+
+        print("LIVE OK (#8): shadow pierce + find-by-name + verify no-op + light DOM")
+    finally:
+        if pid:
+            try:
+                webtier.driver.call("kill_app", {"pid": pid})
+            except Exception:  # noqa: BLE001
+                subprocess.run(["pkill", "-f", f"user-data-dir={profile}"],
+                               capture_output=True)
+
+
 if __name__ == "__main__":
     try:
         _run_offline()
         if os.environ.get("GH_LIVE"):
             _run_live()
+            _run_live_shadow()
     except AssertionError as e:
         print(f"FAIL: {e}")
         sys.exit(1)

@@ -231,6 +231,36 @@ the goal needs "÷" but no '÷' is listed:
 # Drop them so the brain sees only in-window controls.
 _MENU_ROLES = {"AXMenuBar", "AXMenuBarItem", "AXMenu", "AXMenuItem"}
 
+# Roles a brain can actually act on. Used only by web_scope (issue #10): a
+# browser AX tree mixes the page's controls with non-actionable structural
+# nodes (AXWebArea/AXHeading/AXList/AXStaticText/AXGroup) the brain never
+# clicks. The native path keeps every indexed node (a native control may carry
+# an unusual role), so this filter is web-only.
+_ACTIONABLE_ROLES = {
+    "AXButton", "AXLink", "AXTextField", "AXTextArea", "AXCheckBox",
+    "AXRadioButton", "AXPopUpButton", "AXMenuButton", "AXComboBox",
+    "AXSlider", "AXTab", "AXDisclosureTriangle", "AXSearchField",
+    "AXIncrementor", "AXStepper", "AXSwitch", "AXToggle",
+}
+
+
+def _web_area_members(els: list) -> list[bool]:
+    """Mark each element that is a DESCENDANT of an AXWebArea (the page content),
+    by indentation depth: everything deeper than an AXWebArea node, until the
+    depth drops back to or above it. Browser chrome (toolbar, tabs, bookmark
+    bar) sits OUTSIDE the web area and is left unmarked — that's the bloat #10
+    cuts on a web snapshot."""
+    members = [False] * len(els)
+    until_depth: int | None = None
+    for i, el in enumerate(els):
+        if until_depth is not None and el.depth <= until_depth:
+            until_depth = None
+        if until_depth is not None:
+            members[i] = True
+        if el.role == "AXWebArea":
+            until_depth = el.depth
+    return members
+
 
 _DIGEST_LINE = re.compile(r"\[(\d+)\] \S+ '([^']*)'")
 
@@ -314,16 +344,27 @@ def resolve_clicks_guarded(clicks: list, elements: str, *,
     return out, None
 
 
-def actionable_digest(state_markdown: str, *, max_elements: int = 80) -> tuple[str, str]:
+def actionable_digest(state_markdown: str, *, max_elements: int = 80,
+                      web_scope: bool = False) -> tuple[str, str]:
     """Compress a raw AX-tree snapshot into the two things a text brain needs:
     a deduped list of actionable [N] elements (menus excluded), and the current
     value nodes (display text, field contents) used to judge progress. Keeps the
-    prompt small enough for a 7B local model to choose reliably."""
+    prompt small enough for a small local model to choose reliably.
+
+    `web_scope` (issue #10): on a browser AX tree, additionally drop everything
+    OUTSIDE the AXWebArea (the browser chrome — toolbar, tabs, bookmark bar) and
+    every non-actionable structural node, so the brain sees only the page's
+    controls. If the tree has no AXWebArea (e.g. a backgrounded chrome-only
+    capture), it falls back to actionable-only over the whole tree. The native
+    path (web_scope=False) is unchanged, so a calculator digest is byte-identical
+    — the regression guard for #10."""
     els = ax.parse_tree(state_markdown)
+    web_member = _web_area_members(els) if web_scope else None
+    has_web_area = bool(web_member) and any(web_member)
     seen: set[tuple] = set()
     lines: list[str] = []
     windows = 0
-    for el in els:
+    for i, el in enumerate(els):
         if el.role == "AXWindow":
             windows += 1
             if windows > 1:
@@ -333,6 +374,11 @@ def actionable_digest(state_markdown: str, *, max_elements: int = 80) -> tuple[s
                 break
         if el.index is None or el.role in _MENU_ROLES:
             continue
+        if web_scope:
+            if el.role not in _ACTIONABLE_ROLES:
+                continue  # drop AXWebArea/AXHeading/AXList/AXStaticText/chrome groups
+            if has_web_area and not web_member[i]:
+                continue  # drop browser chrome outside the page's web area
         # Collapse id-pinned duplicates only. Same-named elements WITHOUT ids
         # are normal UI (five 'Learn more' links on one page) and must all
         # stay visible or disambiguation is impossible.
@@ -389,7 +435,20 @@ class LocalBrain(Brain):
     def decide(self, goal: str, state: str, history: list[dict]) -> Decision:
         self._ensure_loaded()
 
-        elements, values = actionable_digest(state)
+        # On a web snapshot, scope the digest to the page's controls (drop the
+        # browser chrome + structural noise the brain never clicks) — issue #10.
+        # Native snapshots have no AXWebArea, so this is a no-op there.
+        web = "AXWebArea" in state
+        elements, values = actionable_digest(state, web_scope=web)
+        return self.decide_from_digest(goal, elements, values, history)
+
+    def decide_from_digest(self, goal: str, elements: str, values: str,
+                           history: list[dict]) -> Decision:
+        """The digest-agnostic model core: given a ready-made BUTTONS list and
+        DISPLAY values (from the AX tree OR the DOM tier — issue #9 routing),
+        build the prompt, generate, and parse the clicks-by-name reply. Lets the
+        web loop reuse the exact same brain + protocol as the AX loop."""
+        self._ensure_loaded()
         recent = _recent_actions(history)
         # Static-first ordering so the KV prompt cache gets the longest common
         # prefix across turns: system prompt (constant) > GOAL (per run) >
