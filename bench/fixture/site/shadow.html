@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head><title>Shadow Fixture</title></head>
+<body>
+  <h1>Shadow DOM Fixture</h1>
+  <p>Every control below lives inside an <b>open shadow root</b>, so
+     <code>document.querySelector</code> cannot reach it without piercing.
+     Terminal actions hit the fixture server (the world log).</p>
+
+  <!-- A light-DOM control, reachable by a plain selector — the control group
+       that proves piercing is OPTIONAL for light DOM (it must still work). -->
+  <a id="light-link" href="/set/lightclick">Plain light-DOM link</a>
+
+  <gh-panel></gh-panel>
+
+  <script>
+    class GhPanel extends HTMLElement {
+      connectedCallback() {
+        const root = this.attachShadow({mode: 'open'});
+        root.innerHTML = `
+          <style>
+            button, input, a { font-size: 16px; display: block; margin: 8px 0; }
+            button[disabled] { opacity: .5; }
+          </style>
+          <div class="panel">
+            <!-- (1) shadow-nested button: a plain document.querySelector('#save')
+                 finds nothing; deepQuery pierces the open root. Click navigates
+                 -> server logs /set/shadowclick. -->
+            <button id="save" class="primary">Save project</button>
+
+            <!-- (2) aria-labelled field with NO stable value-selector: only
+                 find-by-accessible-name ("Project name") resolves it. On change
+                 it fetches /set/name?value=... so the server logs the value. -->
+            <input id="x1f9" aria-label="Project name" placeholder="name">
+
+            <!-- (3) wrapping <label> association — name "Description" resolves
+                 the inner input via the label, not aria. -->
+            <label>Description
+              <input id="x2a0">
+            </label>
+
+            <!-- (4) DISABLED button: HTMLElement.click() is a NO-OP (disabled
+                 controls don't dispatch click) yet querySelector finds it and
+                 .click() returns. The verify= predicate must catch that the
+                 world did NOT change. -->
+            <button id="confirm" disabled>Confirm signup</button>
+            <span id="confirmed" hidden>confirmed</span>
+          </div>`;
+
+        const $ = (id) => root.getElementById(id);
+        $('save').addEventListener('click', () => {
+          location.href = '/set/shadowclick';
+        });
+        const name = $('x1f9');
+        name.addEventListener('change', () => {
+          fetch('/set/name?value=' + encodeURIComponent(name.value));
+        });
+        $('confirm').addEventListener('click', () => {
+          // only fires if the button is ever enabled — the no-op case never
+          // reaches here, so /set/confirm stays absent from the world log.
+          $('confirmed').hidden = false;
+          location.href = '/set/confirm';
+        });
+      }
+    }
+    customElements.define('gh-panel', GhPanel);
+  </script>
+</body>
+</html>

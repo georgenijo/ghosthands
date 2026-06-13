@@ -61,17 +61,34 @@ class WebTierError(RuntimeError):
 # --------------------------------------------------------------------------- #
 
 def launch_web(url: str, port: int = DEFAULT_PORT,
-               bundle_id: str = DEFAULT_BUNDLE_ID) -> Any:
+               bundle_id: str = DEFAULT_BUNDLE_ID, *,
+               user_data_dir: str | None = None,
+               new_instance: bool = False) -> Any:
     """Launch Brave with the remote-debugging port open and the page loaded.
 
     `electron_debugging_port` is the knob cua-driver forwards to Chromium as
     `--remote-debugging-port`, which is what enables the whole CDP surface used
-    below. Returns the raw launch result (pid + windows)."""
-    return driver.call("launch_app", {
+    below. Returns the raw launch result (pid + windows).
+
+    `user_data_dir` ISOLATES the run in its own Chromium profile (a distinct
+    `--user-data-dir`), so automation never touches the user's working browser;
+    it implies a new instance. `new_instance` alone forces a fresh instance
+    (open -n) without changing the profile."""
+    args: dict = {
         "bundle_id": bundle_id,
         "electron_debugging_port": port,
         "urls": [url],
-    })
+    }
+    extra: list[str] = []
+    if user_data_dir:
+        extra += [f"--user-data-dir={user_data_dir}",
+                  "--no-first-run", "--no-default-browser-check"]
+        new_instance = True
+    if extra:
+        args["additional_arguments"] = extra
+    if new_instance:
+        args["creates_new_application_instance"] = True
+    return driver.call("launch_app", args)
 
 
 def list_targets(port: int = DEFAULT_PORT) -> list[dict]:
@@ -343,53 +360,198 @@ def cdp_eval(ws_url: str, expression: str) -> Any:
     return result.get("result", {}).get("value")
 
 
-def cdp_click(ws_url: str, selector: str) -> bool:
+# --------------------------------------------------------------------------- #
+# Shadow-DOM piercing + accessible-name resolution (issue #8)                  #
+# --------------------------------------------------------------------------- #
+
+# A self-contained in-page resolver, re-injected into every expression so it
+# survives navigations (a fresh document wipes any persisted global) and never
+# depends on prior state. Returns {deepAll, deepQuery, accName, findByName}.
+#
+# deepQuery pierces OPEN shadow roots — `document.querySelector` stops at the
+# shadow boundary, so App Store Connect (every control inside an open shadow
+# root) reads as empty to a plain selector. We recurse into `el.shadowRoot` at
+# every node. accName resolves an element's accessible name the way a screen
+# reader would, for obfuscated apps with no stable selectors: aria-label,
+# aria-labelledby (dereferenced within the same root), an associated <label>
+# (for= or wrapping), placeholder, title, then visible text.
+#
+# KNOWN LIMIT (deferred, #8 gap 4): CLOSED shadow roots and cross-origin
+# iframes are NOT reachable — `el.shadowRoot` is null for a closed root and
+# `Runtime.evaluate` can't cross a frame boundary. The real fix is the CDP
+# DOM/Accessibility domains driven per-frame; not present on App Store Connect
+# (open roots), so it is documented rather than built here.
+_RESOLVER_OBJ = r"""(() => {
+  function deepAll(root) {
+    const out = [];
+    (function collect(r) {
+      let kids;
+      try { kids = r.querySelectorAll('*'); } catch (x) { return; }
+      for (const e of kids) { out.push(e); if (e.shadowRoot) collect(e.shadowRoot); }
+    })(root || document);
+    return out;
+  }
+  function deepQuery(sel, root) {
+    for (const e of deepAll(root)) {
+      try { if (e.matches && e.matches(sel)) return e; } catch (x) {}
+    }
+    return null;
+  }
+  function _text(n) {
+    return (n && n.textContent ? n.textContent : '').replace(/\s+/g, ' ').trim();
+  }
+  function accName(e) {
+    const root = e.getRootNode();
+    const byId = (id) => {
+      try { return (root.getElementById ? root.getElementById(id) : null)
+                   || document.getElementById(id); } catch (x) { return null; }
+    };
+    const al = e.getAttribute && e.getAttribute('aria-label');
+    if (al && al.trim()) return al.trim();
+    const lb = e.getAttribute && e.getAttribute('aria-labelledby');
+    if (lb) {
+      const t = lb.split(/\s+/).map((id) => _text(byId(id))).filter(Boolean).join(' ');
+      if (t) return t;
+    }
+    if (e.id && root.querySelector) {
+      const esc = (window.CSS && CSS.escape) ? CSS.escape(e.id) : e.id;
+      const lab = root.querySelector('label[for="' + esc + '"]');
+      if (lab) return _text(lab);
+    }
+    const wrap = e.closest && e.closest('label');
+    if (wrap) return _text(wrap);
+    const ph = e.getAttribute && e.getAttribute('placeholder');
+    if (ph && ph.trim()) return ph.trim();
+    const ti = e.getAttribute && e.getAttribute('title');
+    if (ti && ti.trim()) return ti.trim();
+    return _text(e);
+  }
+  function findByName(name) {
+    const want = String(name).replace(/\s+/g, ' ').trim().toLowerCase();
+    const roles = ['button', 'a', 'input', 'select', 'textarea'];
+    const cands = deepAll(document).filter((e) => {
+      const t = e.tagName ? e.tagName.toLowerCase() : '';
+      return roles.includes(t) || (e.getAttribute && e.getAttribute('role'));
+    });
+    const named = cands.map((e) => [e, accName(e).toLowerCase()]);
+    let hit = named.find((p) => p[1] === want);
+    if (!hit) hit = named.find((p) => p[1] && p[1].startsWith(want));
+    if (!hit) hit = named.find((p) => p[1] && p[1].includes(want));
+    return hit ? hit[0] : null;
+  }
+  return { deepAll, deepQuery, accName, findByName };
+})()"""
+
+
+def _expr(body: str) -> str:
+    """Wrap a JS body that uses `H` (the resolver) into a self-contained IIFE."""
+    return "(() => { const H = " + _RESOLVER_OBJ + "; " + body + " })()"
+
+
+def _verify(ws_url: str, predicate: str) -> bool:
+    """Evaluate a JS predicate after an action and return whether it held — the
+    post-action world check that turns "the element existed and .click() fired"
+    into "the world actually changed". A predicate that throws (e.g. the page
+    navigated out from under it) reads as False."""
+    time.sleep(0.2)
+    expr = "(() => { try { return !!(" + predicate + "); } catch (x) { return false; } })()"
+    try:
+        return bool(cdp_eval(ws_url, expr))
+    except WebTierError:
+        return False
+
+
+def cdp_click(ws_url: str, selector: str, *, deep: bool = True,
+              verify: str | None = None) -> bool:
     """Click the first element matching `selector` with a REAL DOM click —
     `HTMLElement.click()` in page context, which fires the synthetic-event
     handlers React (and friends) actually listen to, unlike an AX press.
 
-    Returns True if an element was found and clicked, False if the selector
-    matched nothing. `selector` is embedded via JSON so quotes and brackets in
-    it can never break out of the expression.
+    `deep=True` (default) PIERCES open shadow roots via the deep resolver; pass
+    `deep=False` to restrict to the light DOM (`document.querySelector`). Plain
+    light-DOM selectors resolve under both.
 
-    IN-FLIGHT NAVIGATION CAVEAT: `el.click()` keeps synchronous CDP semantics —
-    it returns as soon as the click handler has been dispatched and `true`
-    serialized back. But if the click triggers a navigation, that navigation is
-    still in flight when this function returns and when the websocket is torn
-    down in `_WebSocket.__exit__`; we do NOT wait for the destination to load.
-    A caller that needs the post-navigation state MUST poll the destination
-    itself (the live test sleeps, then reads the fixture's `/events`)."""
+    `verify` is an optional JS predicate evaluated AFTER the click: the click
+    returning True only means an element was found and `.click()` fired — which
+    is True even when the click no-ops (a disabled control, a handler that
+    bailed). With `verify`, the function returns True only if the world actually
+    changed, so a no-op click is reported as False instead of a false success.
+
+    Returns True if an element was found and clicked (and `verify`, if given,
+    held), else False. `selector` is embedded via JSON so quotes/brackets can't
+    break out of the expression.
+
+    IN-FLIGHT NAVIGATION CAVEAT: if the click triggers a navigation it is still
+    in flight when this returns and when the websocket is torn down; we do NOT
+    wait for the destination. A caller needing post-navigation state MUST poll
+    it (the live test sleeps, then reads the fixture's `/events`). Pair a
+    navigating click with an external world check, not `verify`."""
     sel = json.dumps(selector)
-    expr = (
-        "(() => {"
-        f"  const el = document.querySelector({sel});"
-        "   if (!el) return false;"
-        "   el.click();"
-        "   return true;"
-        "})()"
-    )
-    return bool(cdp_eval(ws_url, expr))
+    finder = ("H.deepQuery(" + sel + ")") if deep else ("document.querySelector(" + sel + ")")
+    body = "const el = " + finder + "; if (!el) return false; el.click(); return true;"
+    if not bool(cdp_eval(ws_url, _expr(body))):
+        return False
+    return _verify(ws_url, verify) if verify is not None else True
 
 
-def cdp_set_value(ws_url: str, selector: str, value: str) -> bool:
+def cdp_set_value(ws_url: str, selector: str, value: str, *, deep: bool = True,
+                  verify: str | None = None) -> bool:
     """Type-without-focus: set an input/select `.value` and dispatch the
     `input` + `change` events frameworks bind to. Handles the hidden-<select>
     case the AX tier cannot reach (options aren't in the AX tree until the
-    native popup opens; in the DOM they're always settable). Returns whether
-    the element was found."""
+    native popup opens; in the DOM they're always settable).
+
+    `deep=True` (default) pierces open shadow roots; `verify` is the same
+    post-action world check as `cdp_click`. Returns whether the element was
+    found (and `verify`, if given, held)."""
     sel = json.dumps(selector)
     val = json.dumps(value)
-    expr = (
-        "(() => {"
-        f"  const el = document.querySelector({sel});"
-        "   if (!el) return false;"
-        f"  el.value = {val};"
-        "   el.dispatchEvent(new Event('input', {bubbles: true}));"
-        "   el.dispatchEvent(new Event('change', {bubbles: true}));"
-        "   return true;"
-        "})()"
-    )
-    return bool(cdp_eval(ws_url, expr))
+    finder = ("H.deepQuery(" + sel + ")") if deep else ("document.querySelector(" + sel + ")")
+    body = ("const el = " + finder + "; if (!el) return false; el.value = " + val + ";"
+            " el.dispatchEvent(new Event('input', {bubbles: true}));"
+            " el.dispatchEvent(new Event('change', {bubbles: true})); return true;")
+    if not bool(cdp_eval(ws_url, _expr(body))):
+        return False
+    return _verify(ws_url, verify) if verify is not None else True
+
+
+def find_by_name(ws_url: str, name: str) -> dict | None:
+    """Resolve an element by its ACCESSIBLE NAME (aria-label, aria-labelledby,
+    associated <label>, placeholder, title, or visible text), piercing open
+    shadow roots — for obfuscated apps with no stable selectors. Returns a
+    descriptor {tag, type, role, name} of the best match, or None. Match order:
+    exact name, then prefix, then substring (case-insensitive)."""
+    nm = json.dumps(name)
+    body = ("const el = H.findByName(" + nm + "); if (!el) return null;"
+            " return {tag: el.tagName.toLowerCase(),"
+            " type: el.getAttribute('type'), role: el.getAttribute('role'),"
+            " name: H.accName(el)};")
+    return cdp_eval(ws_url, _expr(body))
+
+
+def click_by_name(ws_url: str, name: str, *, verify: str | None = None) -> bool:
+    """Click the element resolved by accessible name (see `find_by_name`).
+    Pierces open shadow roots; `verify` is the post-action world check."""
+    nm = json.dumps(name)
+    body = "const el = H.findByName(" + nm + "); if (!el) return false; el.click(); return true;"
+    if not bool(cdp_eval(ws_url, _expr(body))):
+        return False
+    return _verify(ws_url, verify) if verify is not None else True
+
+
+def set_value_by_name(ws_url: str, name: str, value: str, *,
+                      verify: str | None = None) -> bool:
+    """Set `.value` on the element resolved by accessible name (see
+    `find_by_name`) and dispatch input/change. Pierces open shadow roots;
+    `verify` is the post-action world check. Returns whether it was found."""
+    nm = json.dumps(name)
+    val = json.dumps(value)
+    body = ("const el = H.findByName(" + nm + "); if (!el) return false; el.value = " + val + ";"
+            " el.dispatchEvent(new Event('input', {bubbles: true}));"
+            " el.dispatchEvent(new Event('change', {bubbles: true})); return true;")
+    if not bool(cdp_eval(ws_url, _expr(body))):
+        return False
+    return _verify(ws_url, verify) if verify is not None else True
 
 
 def cdp_navigate(ws_url: str, url: str) -> dict:
@@ -407,3 +569,33 @@ def cdp_navigate(ws_url: str, url: str) -> dict:
         cdp = _CDPSession(ws)
         cdp.call("Page.enable")
         return cdp.call("Page.navigate", {"url": url})
+
+
+# --------------------------------------------------------------------------- #
+# Surface routing (issue #9)                                                   #
+# --------------------------------------------------------------------------- #
+
+# Chromium/WebKit bundles whose windows are web surfaces — drive these through
+# the DOM tier (CDP), where a backgrounded tab is fully addressable, real
+# clicks fire React, hidden <select> options are settable, and typing needs no
+# focus. The AX tier stays the right hammer for native AppKit apps.
+_BROWSER_BUNDLE_HINTS = ("brave", "chrom", "safari", "edgemac", "firefox",
+                         "webkit", "vivaldi", "arc", "opera")
+
+
+def route_surface(*, bundle_id: str | None = None,
+                  markdown: str | None = None) -> str:
+    """Pick the tier for a target: ``"web"`` (DOM/CDP) for a browser/web
+    surface, ``"native"`` (AX) otherwise.
+
+    Two independent signals, OR'd: a browser bundle id, or an ``AXWebArea``
+    anywhere in an AX snapshot (an embedded web view inside an otherwise-native
+    app still routes to DOM for its web content). Either alone is enough; with
+    neither, the target is native."""
+    if bundle_id:
+        b = bundle_id.lower()
+        if any(h in b for h in _BROWSER_BUNDLE_HINTS):
+            return "web"
+    if markdown and "AXWebArea" in markdown:
+        return "web"
+    return "native"

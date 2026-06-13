@@ -48,6 +48,11 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--title", help="window-title substring to target (--brain local)")
     p_run.add_argument("--model", help="MLX model id for --brain local (default: project default)")
     p_run.add_argument("--max-turns", type=int, default=20)
+    p_run.add_argument("--surface", choices=["auto", "web", "native"], default="auto",
+                       help="(--brain local) tier: web=DOM/CDP, native=AX, "
+                            "auto=route by app/snapshot (issue #9)")
+    p_run.add_argument("--debug-port", type=int, default=9333,
+                       help="(--surface web) Chromium remote-debugging port")
 
     p_loop = sub.add_parser("ownloop", help="standalone brain loop: local (free MLX) | claude-api | gpt-api")
     p_loop.add_argument("goal")
@@ -141,11 +146,25 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         if args.brain == "local":
-            from . import ownloop
-            if not args.app:
+            from . import ownloop, webtier
+            if not args.app and args.surface != "web":
                 print("--brain local needs --app <bundle id> (the app to drive)")
                 return 2
+            surface = args.surface
+            if surface == "auto":
+                surface = webtier.route_surface(bundle_id=args.app)
             brain = ownloop.LocalBrain(args.model)
+            if surface == "web":
+                if not args.url:
+                    print("--surface web needs --url <page> (the web page to drive)")
+                    return 2
+                from . import webloop
+                print(f"brain: local ({brain.model_id}) — free, DOM tier (web) [#9]")
+                print(f"goal:  {args.goal}\n")
+                done = webloop.run_web_loop(
+                    brain, args.goal, args.url, port=args.debug_port,
+                    max_turns=args.max_turns)
+                return 0 if done else 1
             print(f"brain: local ({brain.model_id}) — free, on the AX tree")
             print(f"goal:  {args.goal}\n")
             done = ownloop.run_loop(

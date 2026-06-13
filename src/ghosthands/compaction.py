@@ -30,8 +30,10 @@ from .ownloop import actionable_digest
 
 def _digest_text(markdown: str) -> str:
     """Build the brain-facing digest string: BUTTONS list + DISPLAY values,
-    reusing ownloop.actionable_digest so the funnel and the loop stay in sync."""
-    buttons, values = actionable_digest(markdown)
+    reusing ownloop.actionable_digest so the funnel and the loop stay in sync.
+    A web snapshot (AXWebArea present) is scoped to the page's controls —
+    browser chrome + structural noise dropped (issue #10), matching the loop."""
+    buttons, values = actionable_digest(markdown, web_scope="AXWebArea" in markdown)
     parts = ["BUTTONS (act by element_index):", buttons or "(none)"]
     parts += ["", "DISPLAY:", values or "(none)"]
     return "\n".join(parts)
