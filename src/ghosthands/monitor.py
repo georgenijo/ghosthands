@@ -206,11 +206,19 @@ def probe_agents(
 
     agents: list[dict] = []
     for pid in pgrep_driver():
-        parent_pid = ppid_of(pid)
-        parent_cmd = command_of(parent_pid) if parent_pid is not None else None
-        agent = _program_of(parent_cmd)
-        cwd = cwd_of(parent_pid) if (agent and parent_pid is not None) else None
-        agents.append(_agent_record(pid, parent_pid, parent_cmd, cwd))
+        # Find the brain ancestor (1 hop raw, 2 hops through the hub). When one
+        # exists we attribute to IT — so --session-id/--model/cwd come from the
+        # real agent, not the intervening proxy. When none does (the bare
+        # daemon, parented by launchd), fall back to the immediate parent with
+        # agent=None so daemon_up detection is unchanged.
+        agent_pid, agent_cmd = _agent_ancestor(pid, ppid_of, command_of)
+        if agent_cmd is not None:
+            cwd = cwd_of(agent_pid) if agent_pid is not None else None
+            agents.append(_agent_record(pid, agent_pid, agent_cmd, cwd))
+        else:
+            immediate = ppid_of(pid)
+            immediate_cmd = command_of(immediate) if immediate is not None else None
+            agents.append(_agent_record(pid, immediate, immediate_cmd, None))
     return agents
 
 
@@ -219,6 +227,39 @@ def _first(pattern: re.Pattern[str], text: str | None) -> str | None:
         return None
     m = pattern.search(text)
     return m.group(1) if m else None
+
+
+# How many ppid hops to climb looking for a brain. Raw wiring is 1 hop
+# (claude -> cua-driver); routing through the hub inserts a layer
+# (claude -> ghosthands hub -> cua-driver), so the brain is 2 hops up. A small
+# bound covers both and any single extra shim without risking a runaway walk.
+_MAX_ANCESTOR_HOPS = 5
+
+
+def _agent_ancestor(
+    start_pid: int,
+    ppid_of: Callable[[int], int | None],
+    command_of: Callable[[int], str | None],
+) -> tuple[int | None, str | None]:
+    """Climb the parent chain from ``start_pid`` to the nearest ancestor that is
+    a recognised brain (claude/codex), returning its ``(pid, command)``.
+
+    The cua-driver leaf's *immediate* parent is the brain only when wired raw;
+    with the hub in the path it is the proxy, and the brain is one hop further
+    up. We therefore walk ppids until ``_program_of`` matches, stopping at
+    pid<=1 (launchd) or the hop bound. Returns ``(None, None)`` when no brain is
+    found — the daemon (parented by launchd) and any unrecognised tree degrade
+    to "no brain", exactly as before."""
+    pid = start_pid
+    for _ in range(_MAX_ANCESTOR_HOPS):
+        ppid = ppid_of(pid)
+        if ppid is None or ppid <= 1:
+            return None, None
+        cmd = command_of(ppid)
+        if _program_of(cmd):
+            return ppid, cmd
+        pid = ppid
+    return None, None
 
 
 def probe_windows() -> list[dict]:

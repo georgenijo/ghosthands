@@ -90,7 +90,20 @@ def main(argv: list[str] | None = None) -> int:
     p_compact.add_argument("--max-chars", type=int, default=8000, help="offload the full original to disk above this size")
     p_compact.add_argument("--stats-only", action="store_true", help="print only the reduction stats, not the compacted text")
 
-    sub.add_parser("hub", help="run the stdio MCP hub (tags + tees every call): register an agent's MCP command as 'ghosthands hub'")
+    p_hub = sub.add_parser("hub", help="stdio MCP hub: bare = run the proxy; install/uninstall/status manage routing")
+    hub_sub = p_hub.add_subparsers(dest="hub_command")
+    p_hi = hub_sub.add_parser("install", help="route a client's cua-driver MCP through the hub + write the ghclaude launcher")
+    p_hi.add_argument("--client", choices=["claude", "codex", "both"], default="claude", help="which agent to re-register (default: claude)")
+    p_hi.add_argument("--name", default="cua-driver", help="MCP server name to re-register (default: cua-driver, keeps tool names stable)")
+    p_hi.add_argument("--scope", help="claude scope: local|user|project (default: keep the current one)")
+    p_hi.add_argument("--dry-run", action="store_true", help="print the commands that would run, change nothing")
+    p_hi.add_argument("--no-ghclaude", action="store_true", help="don't write the ghclaude helper")
+    p_hu = hub_sub.add_parser("uninstall", help="restore the raw cua-driver MCP (undo install)")
+    p_hu.add_argument("--client", choices=["claude", "codex", "both"], default="claude")
+    p_hu.add_argument("--name", default="cua-driver")
+    p_hu.add_argument("--scope")
+    p_hs = hub_sub.add_parser("status", help="show whether cua-driver is hub-routed, the launcher, and recent tagged logs")
+    p_hs.add_argument("--name", default="cua-driver")
 
     p_web = sub.add_parser("web", help="DOM tier over Brave's debug port: ghosthands web targets|open ...")
     web_sub = p_web.add_subparsers(dest="web_command", required=True)
@@ -248,8 +261,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "hub":
-        from . import hub
-        return hub.main()
+        if getattr(args, "hub_command", None) is None:
+            from . import hub  # bare `ghosthands hub` = run the proxy (the MCP command)
+            return hub.main()
+        from . import hubinstall
+        if args.hub_command == "install":
+            return hubinstall.cli_install(args)
+        if args.hub_command == "uninstall":
+            return hubinstall.cli_uninstall(args)
+        if args.hub_command == "status":
+            return hubinstall.cli_status(args)
+        return 2
 
     if args.command == "web":
         from . import webtier
