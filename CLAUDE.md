@@ -9,3 +9,5 @@ Key reminders (full list in AGENTS.md §"Hard rules"):
 - Run cursor-less (omit `session`) until Screen Recording is granted, or clicks throw `EAGAIN`.
 - Retry on `daemon closed connection` / `EAGAIN` — the action often still landed.
 - Local-only. No cloud, no telemetry.
+
+Working notes: architectural/scope/process decisions are logged in **[docs/decisions/DECISIONS.md](./docs/decisions/DECISIONS.md)** (newest first), maintained via the `/decisions` skill.
