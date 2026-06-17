@@ -186,11 +186,24 @@ class App:
 
     # -- actions -------------------------------------------------------------
 
-    def click(self, target: str | Matcher, *, verify: Predicate | None = None) -> ax.Element:
+    def click(self, target: str | Matcher, *, action: str | None = None,
+              verify: Predicate | None = None) -> ax.Element:
         """Snapshot-fresh click by matcher. Tries every duplicate-subtree
         candidate on stale-index misses; on transient daemon errors consults
-        `verify` (the action often landed) before re-issuing."""
-        return self._element_action("click", target, verify=verify)
+        `verify` (the action often landed) before re-issuing.
+
+        `action` invokes a NAMED AX action instead of the default AXPress —
+        cua's set is `press` (default) / `show_menu` / `pick` / `confirm` /
+        `cancel` / `open`, plus `raise` on an AXWindow. A web file-input's row,
+        for instance, needs `open`/`confirm`, not press (press renames it)."""
+        extra = {"action": action} if action else {}
+        return self._element_action("click", target, verify=verify, **extra)
+
+    def double_click(self, target: str | Matcher, *, verify: Predicate | None = None) -> ax.Element:
+        """Snapshot-fresh double-click by matcher (cua `double_click` → AXOpen
+        when advertised, else a pixel double-click at the element's centre).
+        For list/table rows and items that select or open on double-click."""
+        return self._element_action("double_click", target, verify=verify)
 
     def _element_action(self, tool: str, target: str | Matcher, *,
                         verify: Predicate | None, **extra) -> ax.Element:

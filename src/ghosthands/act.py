@@ -34,22 +34,50 @@ def _resolve(verb: str, spec: str, *, title_contains: str | None) -> App | int:
 
 
 def click(name: str, spec: str, *, title_contains: str | None = None,
-          out=sys.stdout) -> int:
+          action: str | None = None, out=sys.stdout) -> int:
     """Press the element named `name` in `spec`'s window. NO model.
 
     Honest by construction: `App.click` re-resolves the name against a fresh
     snapshot and refuses (ElementNotFoundError) if it isn't on screen, so a
     miss is a clean exit 1 — never a press into the void reported as success.
+
+    `action` invokes a named AX action instead of the default AXPress
+    (`open` / `confirm` / `pick` / `show_menu` / `cancel`, or `raise` on a
+    window) — what file pickers and openable rows need (press just renames
+    them). It's still an AX action: background-safe, no focus steal.
     """
     app = _resolve("click", spec, title_contains=title_contains)
     if isinstance(app, int):
         return app
     try:
-        el = app.click(name)
+        el = app.click(name, action=action)
     except _CLEAN as e:
         print(f"click failed: {e}", file=sys.stderr)
         return 1
-    print(f"clicked {name!r} (role={el.role} index={el.index}) "
+    did = f"invoked {action!r} on" if action else "clicked"
+    print(f"{did} {name!r} (role={el.role} index={el.index}) "
+          f"in {app.name or spec}", file=out)
+    return 0
+
+
+def doubleclick(name: str, spec: str, *, title_contains: str | None = None,
+                out=sys.stdout) -> int:
+    """Double-click the element named `name` in `spec`'s window. NO model.
+
+    cua's `double_click` (AXOpen when advertised, else a pixel double at the
+    element's centre) — for rows/items that select or open on double-click.
+    Same honesty contract as `click`: re-resolves against a fresh snapshot and
+    exits 1 cleanly when the name isn't on screen.
+    """
+    app = _resolve("doubleclick", spec, title_contains=title_contains)
+    if isinstance(app, int):
+        return app
+    try:
+        el = app.double_click(name)
+    except _CLEAN as e:
+        print(f"doubleclick failed: {e}", file=sys.stderr)
+        return 1
+    print(f"double-clicked {name!r} (role={el.role} index={el.index}) "
           f"in {app.name or spec}", file=out)
     return 0
 
