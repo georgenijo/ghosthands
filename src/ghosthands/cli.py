@@ -129,6 +129,11 @@ def main(argv: list[str] | None = None) -> int:
     p_find.add_argument("target", help="bundle id, bare pid, or process name")
     p_find.add_argument("--title", help="window-title substring to target")
 
+    p_click = sub.add_parser("click", help='press an element by name, no model: ghosthands click "<name>" <bundle|pid|name>')
+    p_click.add_argument("name", help="accessible name / label / title / ax_id to press")
+    p_click.add_argument("target", help="bundle id, bare pid, or process name")
+    p_click.add_argument("--title", help="window-title substring to target")
+
     p_web = sub.add_parser("web", help="DOM tier over Brave's debug port: ghosthands web targets|open ...")
     web_sub = p_web.add_subparsers(dest="web_command", required=True)
     p_web_t = web_sub.add_parser("targets", help="list browser tabs by CDP target id (no fronting)")
@@ -331,6 +336,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "find":
         from . import read
         return read.find(args.name, args.target, title_contains=args.title)
+
+    if args.command == "click":
+        from . import act
+        return act.click(args.name, args.target, title_contains=args.title)
 
     if args.command == "web":
         from . import webtier
