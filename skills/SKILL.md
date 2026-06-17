@@ -88,6 +88,16 @@ Canvas/viewport apps (Blender, Unity, games, WebGL, Qt/wxWidgets) expose the who
 
 Computer use is the **last-mile** path. For account-backed apps (email, calendar, notion, github, etc.), prefer a connected MCP/API tool — clicking is slower and more fragile. List the available MCP tools first; click only when no connector exists, or the user explicitly says to operate the visible UI. A screenshot showing an app is *context*, not a request to click it.
 
+## 11. Reads with no model (the CLI read tier)
+
+When you only need to **read** — verify a value, check an element exists, grab a screenshot — you don't need a brain or a full snapshot→act→verify turn. The `ghosthands` CLI exposes the read half directly: **deterministic, ~1s warm, $0, no model loaded.**
+
+- `ghosthands snapshot <bundle|pid|name> [--ax|--json|--watch] [--query Q]` — dump the AX tree (the same tree `get_window_state` returns). `--json` for parsed elements, `--watch` re-dumps only when the tree changes.
+- `ghosthands find <name> <bundle|pid|name>` — does the element exist? prints role / index / on-screen; **exit 0 found, 1 missing** — use it as a pass/fail gate in scripts.
+- `ghosthands shot <bundle|pid|name> <file.png>` — screenshot via the driver's own Screen Recording grant; fails gracefully (one line, no traceback) when it isn't granted.
+
+Targets by bundle id, **pid**, or **process name**; binds the on-screen window. These never foreground and never load a model. Reach for them to **verify** (after acting, or before deciding) instead of spending a whole agent turn — they are the no-model symmetric half of `record`/`replay`.
+
 ---
 
 *Adapted from the `trycua/cua` `cua-driver` skill (MIT) and observed practice. See `../ATTRIBUTION.md`.*
