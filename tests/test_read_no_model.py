@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Acceptance guard for issue #35: the read tier is MODEL-FREE.
+"""Acceptance guard: the no-brain tiers are MODEL-FREE.
 
-`ghosthands.read` must never drag in the model stack — importing it must pull
-in NO `mlx*` module and NOT `ghosthands.ownloop`. That boundary is part of the
-epic's acceptance criteria: read/verify is instant + $0 precisely because it
-never spins up a brain.
+`ghosthands.read` (issue #35) and `ghosthands.act` (model-free driving) must
+never drag in the model stack — importing either must pull in NO `mlx*` module
+and NOT `ghosthands.ownloop`. That boundary is the whole point: read/verify and
+name-targeted click/type are instant + $0 precisely because they never spin up
+a brain.
 
-This runs the import in a FRESH subprocess (so nothing another test or this
+This runs each import in a FRESH subprocess (so nothing another test or this
 harness already imported can mask a regression) and inspects sys.modules.
 
 Run: python3 tests/test_read_no_model.py
@@ -18,11 +19,14 @@ from pathlib import Path
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 
+# The modules that must never appear in a no-brain tier's fresh import.
+MODEL_FREE_MODULES = ("ghosthands.read", "ghosthands.act")
+
 # Imported in a clean interpreter; prints the offending modules (if any).
 PROBE = r"""
 import sys
 sys.path.insert(0, {src!r})
-import ghosthands.read  # noqa: F401
+import {module}  # noqa: F401
 
 bad = sorted(
     m for m in sys.modules
@@ -32,41 +36,44 @@ print("\n".join(bad))
 """
 
 
-def _modules_after_importing_read() -> list[str]:
+def _modules_after_importing(module: str) -> list[str]:
     proc = subprocess.run(
-        [sys.executable, "-c", PROBE.format(src=SRC)],
+        [sys.executable, "-c", PROBE.format(src=SRC, module=module)],
         capture_output=True, text=True,
     )
     assert proc.returncode == 0, (
-        f"importing ghosthands.read failed:\n{proc.stderr}")
+        f"importing {module} failed:\n{proc.stderr}")
     return [line for line in proc.stdout.splitlines() if line.strip()]
 
 
-def test_read_imports_no_model_stack() -> None:
-    offenders = _modules_after_importing_read()
-    assert not offenders, (
-        "ghosthands.read pulled in the model stack — the read tier must be "
-        f"model-free (issue #35). Offending modules: {offenders}")
+def test_imports_no_model_stack() -> None:
+    for module in MODEL_FREE_MODULES:
+        offenders = _modules_after_importing(module)
+        assert not offenders, (
+            f"{module} pulled in the model stack — the no-brain tier must be "
+            f"model-free. Offending modules: {offenders}")
 
 
-def test_read_module_imports_no_ownloop_in_source() -> None:
+def test_module_imports_no_ownloop_in_source() -> None:
     """Belt-and-braces: no `from . import ownloop` / `import ownloop` statement
     on any code path, so a lazy import can't sneak the model stack in past the
     runtime probe above. (Docstring prose mentioning the names is fine — we
     look only for actual import statements.)"""
     import re
-    src = (Path(SRC) / "ghosthands" / "read.py").read_text()
-    bad = re.findall(r"^\s*(?:from\s+\S+\s+)?import\s+.*\b(?:ownloop|mlx)\b",
-                     src, re.MULTILINE)
-    assert not bad, (
-        f"ghosthands/read.py has a model-stack import statement: {bad} "
-        "— keep the read path model-free (issue #35)")
+    for module in MODEL_FREE_MODULES:
+        path = Path(SRC) / Path(*module.split(".")).with_suffix(".py")
+        src = path.read_text()
+        bad = re.findall(r"^\s*(?:from\s+\S+\s+)?import\s+.*\b(?:ownloop|mlx)\b",
+                         src, re.MULTILINE)
+        assert not bad, (
+            f"{path.name} has a model-stack import statement: {bad} "
+            "— keep the no-brain path model-free")
 
 
 def main() -> int:
     tests = [
-        test_read_imports_no_model_stack,
-        test_read_module_imports_no_ownloop_in_source,
+        test_imports_no_model_stack,
+        test_module_imports_no_ownloop_in_source,
     ]
     for t in tests:
         t()
