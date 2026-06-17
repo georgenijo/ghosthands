@@ -110,6 +110,25 @@ def main(argv: list[str] | None = None) -> int:
     p_hs = hub_sub.add_parser("status", help="show whether cua-driver is hub-routed, the launcher, and recent tagged logs")
     p_hs.add_argument("--name", default="cua-driver")
 
+    p_snapshot = sub.add_parser("snapshot", help="no-brain AX-tree dump: ghosthands snapshot <bundle|pid|name> [--ax|--json|--watch]")
+    p_snapshot.add_argument("target", help="bundle id (com.apple.calculator), bare pid, or process name")
+    fmt_grp = p_snapshot.add_mutually_exclusive_group()
+    fmt_grp.add_argument("--ax", action="store_true", help="markdown AX tree (default)")
+    fmt_grp.add_argument("--json", action="store_true", help="parsed elements as JSON")
+    p_snapshot.add_argument("--watch", action="store_true", help="re-dump when the tree changes (Ctrl-C to stop)")
+    p_snapshot.add_argument("--query", help="case-insensitive filter for the tree (matching lines + ancestors)")
+    p_snapshot.add_argument("--title", help="window-title substring to target (apps with many windows)")
+
+    p_shot = sub.add_parser("shot", help="screenshot a window to a PNG via cua's grant: ghosthands shot <target> <file.png>")
+    p_shot.add_argument("target", help="bundle id, bare pid, or process name")
+    p_shot.add_argument("file", help="output .png path")
+    p_shot.add_argument("--title", help="window-title substring to target")
+
+    p_find = sub.add_parser("find", help="resolve a name to an element (role/on-screen/index), no model: ghosthands find <name> <target>")
+    p_find.add_argument("name", help="accessible name / label / title / ax_id to resolve")
+    p_find.add_argument("target", help="bundle id, bare pid, or process name")
+    p_find.add_argument("--title", help="window-title substring to target")
+
     p_web = sub.add_parser("web", help="DOM tier over Brave's debug port: ghosthands web targets|open ...")
     web_sub = p_web.add_subparsers(dest="web_command", required=True)
     p_web_t = web_sub.add_parser("targets", help="list browser tabs by CDP target id (no fronting)")
@@ -291,6 +310,27 @@ def main(argv: list[str] | None = None) -> int:
         if args.hub_command == "status":
             return hubinstall.cli_status(args)
         return 2
+
+    if args.command == "snapshot":
+        from . import read  # no-brain read tier (imports neither ownloop nor mlx)
+        fmt = "json" if args.json else "ax"
+        try:
+            if args.watch:
+                return read.watch(args.target, fmt=fmt, query=args.query,
+                                  title_contains=args.title)
+            return read.snapshot(args.target, fmt=fmt, query=args.query,
+                                 title_contains=args.title)
+        except read.GhostHandsError as e:
+            print(f"snapshot failed: {e}", file=sys.stderr)
+            return 1
+
+    if args.command == "shot":
+        from . import read
+        return read.shot(args.target, args.file, title_contains=args.title)
+
+    if args.command == "find":
+        from . import read
+        return read.find(args.name, args.target, title_contains=args.title)
 
     if args.command == "web":
         from . import webtier
