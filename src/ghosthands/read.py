@@ -81,27 +81,59 @@ def _bind_pid(pid: int, *, title_contains: str | None = None) -> App:
 
 def _resolve_name(name: str, *, title_contains: str | None = None,
                   urls: list[str] | None = None) -> App:
-    args: dict = {"name": name}
-    if urls:
-        args["urls"] = urls
-    result = driver.call("launch_app", args)
-    pid = result.get("pid")
-    app_name = result.get("name", name)
-
-    window = App._pick_window(result.get("windows", []), title_contains)
-    for _ in range(10):
+    # 1) Installed app: LaunchServices launch-by-name (idempotent, backgrounds).
+    result = None
+    try:
+        args: dict = {"name": name}
+        if urls:
+            args["urls"] = urls
+        result = driver.call("launch_app", args)
+    except driver.DriverError:
+        result = None  # not registered with LaunchServices — try the fallback
+    if result and result.get("pid"):
+        pid = result["pid"]
+        app_name = result.get("name", name)
+        window = App._pick_window(result.get("windows", []), title_contains)
+        for _ in range(10):
+            if window is not None:
+                break
+            time.sleep(0.4)
+            listed = driver.call("list_windows", {"pid": pid})
+            windows = listed["windows"] if isinstance(listed, dict) else listed
+            window = App._pick_window(windows or [], title_contains)
         if window is not None:
-            break
-        time.sleep(0.4)
-        listed = driver.call("list_windows", {"pid": pid})
-        windows = listed["windows"] if isinstance(listed, dict) else listed
-        window = App._pick_window(windows or [], title_contains)
-    if window is None:
-        raise GhostHandsError(
-            f"{name!r} (pid {pid}): no on-screen window"
-            + (f" titled ~{title_contains!r}" if title_contains else "")
-            + " appeared")
-    return App(pid, window["window_id"], name=app_name)
+            return App(pid, window["window_id"], name=app_name)
+
+    # 2) Fallback: a RUNNING app LaunchServices can't launch by name — a dev
+    #    build, an unsigned/ad-hoc .app, anything not registered. Match the
+    #    visible process name and bind its on-screen window by pid, so you can
+    #    say `snapshot FleetMap` instead of hunting for the pid.
+    pid = _find_running_pid_by_name(name)
+    if pid is not None:
+        return _bind_pid(pid, title_contains=title_contains)
+    raise GhostHandsError(
+        f"{name!r}: not an installed app, and no running process matches "
+        "(point at it by pid, or pass its bundle id)")
+
+
+def _find_running_pid_by_name(name: str) -> int | None:
+    """PID of a running app whose visible name matches `name` (exact first,
+    then substring). For apps not registered with LaunchServices."""
+    try:
+        listed = driver.call("list_apps")
+    except driver.DriverError:
+        return None
+    apps = listed.get("apps", []) if isinstance(listed, dict) else (listed or [])
+    running = [a for a in apps if a.get("running") and a.get("pid")]
+    wanted = name.casefold()
+    exact = [a for a in running if (a.get("name") or "").casefold() == wanted]
+    subs = [a for a in running if wanted in (a.get("name") or "").casefold()]
+    cands = exact or subs
+    if not cands:
+        return None
+    # Prefer a candidate that reports windows (likelier the visible target).
+    cands.sort(key=lambda a: 0 if a.get("windows") else 1)
+    return cands[0]["pid"]
 
 
 # -- snapshot ----------------------------------------------------------------
