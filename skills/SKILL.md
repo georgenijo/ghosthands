@@ -88,15 +88,19 @@ Canvas/viewport apps (Blender, Unity, games, WebGL, Qt/wxWidgets) expose the who
 
 Computer use is the **last-mile** path. For account-backed apps (email, calendar, notion, github, etc.), prefer a connected MCP/API tool — clicking is slower and more fragile. List the available MCP tools first; click only when no connector exists, or the user explicitly says to operate the visible UI. A screenshot showing an app is *context*, not a request to click it.
 
-## 11. Reads with no model (the CLI read tier)
+## 11. No-model CLI tier — read, then act, without a brain
 
-When you only need to **read** — verify a value, check an element exists, grab a screenshot — you don't need a brain or a full snapshot→act→verify turn. The `ghosthands` CLI exposes the read half directly: **deterministic, ~1s warm, $0, no model loaded.**
+You only need a model to **decide** what to do. Reading the screen, and pressing a target you can **name**, need no brain — so the `ghosthands` CLI exposes both directly: **deterministic, ~1s warm, $0, no model loaded.** Reach for these instead of spending a whole agent turn; bring in a model only when you genuinely have to *figure out* what to touch.
 
+**Read:**
 - `ghosthands snapshot <bundle|pid|name> [--ax|--json|--watch] [--query Q]` — dump the AX tree (the same tree `get_window_state` returns). `--json` for parsed elements, `--watch` re-dumps only when the tree changes.
-- `ghosthands find <name> <bundle|pid|name>` — does the element exist? prints role / index / on-screen; **exit 0 found, 1 missing** — use it as a pass/fail gate in scripts.
+- `ghosthands find <name> <bundle|pid|name>` — does the element exist? prints role / index / on-screen; **exit 0 found, 1 missing** — a pass/fail gate.
 - `ghosthands shot <bundle|pid|name> <file.png>` — screenshot via the driver's own Screen Recording grant; fails gracefully (one line, no traceback) when it isn't granted.
 
-Targets by bundle id, **pid**, or **process name**; binds the on-screen window. These never foreground and never load a model. Reach for them to **verify** (after acting, or before deciding) instead of spending a whole agent turn — they are the no-model symmetric half of `record`/`replay`.
+**Act:**
+- `ghosthands click "<name>" <bundle|pid|name>` — AXPress the element by name. **Honest:** refuses (clean exit 1) when the name isn't on screen — never a press into the void reported as success. Turns a ~1-minute decide-loop into a ~1s deterministic click for any target you can name. (`type` is not here yet — synthetic keystrokes no-op on a background window; tracked separately.)
+
+Targets resolve by bundle id, **pid**, or **process name** — including a *running-but-uninstalled* app (dev build / unsigned `.app`) by its visible name, not just its pid. All of it binds the on-screen window, never foregrounds, never loads a model. This is the no-model symmetric half of `record`/`replay`: look → act → look, free.
 
 ---
 
