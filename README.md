@@ -1,3 +1,5 @@
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg"><img src="docs/banner.svg" alt="ghosthands — Local computer-use for macOS" width="100%"></picture>
+
 <div align="center">
 
 # 👻 GhostHands
