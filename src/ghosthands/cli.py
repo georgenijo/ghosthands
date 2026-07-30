@@ -129,10 +129,16 @@ def main(argv: list[str] | None = None) -> int:
     p_find.add_argument("target", help="bundle id, bare pid, or process name")
     p_find.add_argument("--title", help="window-title substring to target")
 
-    p_click = sub.add_parser("click", help='press an element by name, no model: ghosthands click "<name>" <bundle|pid|name>')
+    p_click = sub.add_parser("click", help='press an element by name, no model: ghosthands click "<name>" <bundle|pid|name> [--action open]')
     p_click.add_argument("name", help="accessible name / label / title / ax_id to press")
     p_click.add_argument("target", help="bundle id, bare pid, or process name")
     p_click.add_argument("--title", help="window-title substring to target")
+    p_click.add_argument("--action", help="named AX action instead of press: open|confirm|pick|show_menu|cancel|raise (default: press). Use for file-picker rows / openable items.")
+
+    p_dclick = sub.add_parser("doubleclick", help='double-click an element by name (AXOpen), no model: ghosthands doubleclick "<name>" <bundle|pid|name>')
+    p_dclick.add_argument("name", help="accessible name / label / title / ax_id to double-click")
+    p_dclick.add_argument("target", help="bundle id, bare pid, or process name")
+    p_dclick.add_argument("--title", help="window-title substring to target")
 
     p_web = sub.add_parser("web", help="DOM tier over Brave's debug port: ghosthands web targets|open ...")
     web_sub = p_web.add_subparsers(dest="web_command", required=True)
@@ -339,7 +345,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "click":
         from . import act
-        return act.click(args.name, args.target, title_contains=args.title)
+        return act.click(args.name, args.target, title_contains=args.title,
+                         action=args.action)
+
+    if args.command == "doubleclick":
+        from . import act
+        return act.doubleclick(args.name, args.target, title_contains=args.title)
 
     if args.command == "web":
         from . import webtier
